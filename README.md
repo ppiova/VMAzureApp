@@ -2,6 +2,10 @@
 
 Azure VM Manager is a Windows desktop app for managing Azure virtual machines across subscriptions without opening the Azure portal.
 
+## Preview
+
+![Azure VM Manager preview](docs/screenshot.png)
+
 ## Features
 
 - Interactive Microsoft Entra sign-in.
