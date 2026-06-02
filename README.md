@@ -42,6 +42,10 @@ git push origin v1.0.0
 
 See [PACKAGING.md](PACKAGING.md) for signing certificate and GitHub Secrets setup.
 
+## Built with GitHub Copilot
+
+This project was built with [GitHub Copilot](https://github.com/features/copilot), a developer tool for AI-assisted coding and vibe coding workflows.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE). You can use, modify, and improve it freely. The software is provided as-is, without warranty or liability for misuse.
