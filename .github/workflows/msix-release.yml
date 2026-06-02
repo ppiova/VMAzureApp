@@ -41,10 +41,19 @@ jobs:
           $version = ($parts[0..3] -join ".")
           $publisher = if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) { "CN=AzureVMManager" } else { $env:PACKAGE_PUBLISHER }
 
-          $manifest = Get-Content $env:MANIFEST_PATH -Raw
-          $manifest = $manifest -replace 'Version="[^"]+"', "Version=""$version"""
-          $manifest = $manifest -replace 'Publisher="[^"]+"', "Publisher=""$publisher"""
-          Set-Content -Path $env:MANIFEST_PATH -Value $manifest -Encoding UTF8
+          [xml]$manifest = Get-Content $env:MANIFEST_PATH
+          $manifest.Package.Identity.Version = $version
+          $manifest.Package.Identity.Publisher = $publisher
+
+          $settings = [System.Xml.XmlWriterSettings]::new()
+          $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
+          $settings.Indent = $true
+          $writer = [System.Xml.XmlWriter]::Create($env:MANIFEST_PATH, $settings)
+          try {
+            $manifest.Save($writer)
+          } finally {
+            $writer.Dispose()
+          }
 
           "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "EFFECTIVE_PUBLISHER=$publisher" | Out-File -FilePath $env:GITHUB_ENV -Append
