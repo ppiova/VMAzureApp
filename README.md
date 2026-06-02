@@ -41,3 +41,7 @@ git push origin v1.0.0
 ```
 
 See [PACKAGING.md](PACKAGING.md) for signing certificate and GitHub Secrets setup.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). You can use, modify, and improve it freely. The software is provided as-is, without warranty or liability for misuse.
