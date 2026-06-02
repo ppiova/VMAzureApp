@@ -9,6 +9,8 @@ Azure VM Manager is a Windows desktop app for managing Azure virtual machines ac
 - Lists virtual machines and power states.
 - Start VMs quickly.
 - Stop and deallocate VMs to reduce compute costs.
+- Local schedules to start or stop/deallocate VMs on selected days and times.
+- VM details panel with subscription, resource group, region, size, OS, disks, zones, tags, and status.
 - Modern WPF UI.
 - System tray icon with quick actions.
 - MSIX packaging workflow for GitHub Releases.
@@ -30,6 +32,10 @@ dotnet run --project .\VMAzureApp\VMAzureApp.csproj
 ```powershell
 dotnet build .\VMAzureApp\VMAzureApp.csproj
 ```
+
+## Scheduling notes
+
+Schedules are stored locally under the user's application data folder and run in local machine time. The app must be open or running in the system tray for scheduled VM actions to execute.
 
 ## MSIX releases
 

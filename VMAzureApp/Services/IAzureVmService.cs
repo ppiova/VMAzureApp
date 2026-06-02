@@ -12,5 +12,9 @@ public interface IAzureVmService
 
     Task StartVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default);
 
+    Task StartVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default);
+
     Task DeallocateVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default);
+
+    Task DeallocateVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default);
 }

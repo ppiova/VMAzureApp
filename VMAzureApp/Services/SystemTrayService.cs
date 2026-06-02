@@ -95,6 +95,31 @@ public sealed class SystemTrayService : IDisposable
 
         _contextMenu.Items.Add(vmMenu);
         _contextMenu.Items.Add(new Forms.ToolStripSeparator());
+
+        Forms.ToolStripMenuItem schedulesMenu = new("Schedules");
+        if (_viewModel.Schedules.Count == 0)
+        {
+            schedulesMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("No schedules configured") { Enabled = false });
+        }
+        else
+        {
+            foreach (VmSchedule schedule in _viewModel.Schedules)
+            {
+                Forms.ToolStripMenuItem scheduleItem = new(schedule.Summary)
+                {
+                    Checked = schedule.Enabled
+                };
+                scheduleItem.DropDownItems.Add(new Forms.ToolStripMenuItem($"Last result: {schedule.LastResult}") { Enabled = false });
+                scheduleItem.DropDownItems.Add(CreateMenuItem(
+                    "Run now",
+                    (_, _) => Dispatch(() => _viewModel.RunScheduleNowCommand.Execute(schedule)),
+                    _viewModel.RunScheduleNowCommand.CanExecute(schedule)));
+                schedulesMenu.DropDownItems.Add(scheduleItem);
+            }
+        }
+
+        _contextMenu.Items.Add(schedulesMenu);
+        _contextMenu.Items.Add(new Forms.ToolStripSeparator());
         _contextMenu.Items.Add(CreateMenuItem("Hide window", (_, _) => Dispatch(() => _window.Hide())));
         _contextMenu.Items.Add(CreateMenuItem("Exit", (_, _) => Dispatch(ExitApplication)));
     }

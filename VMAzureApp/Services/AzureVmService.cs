@@ -66,6 +66,12 @@ public sealed class AzureVmService : IAzureVmService
                     virtualMachine.Data.Name,
                     virtualMachine.Data.Location.Name,
                     virtualMachine.Data.HardwareProfile?.VmSize?.ToString() ?? "N/A",
+                    virtualMachine.Data.StorageProfile?.OSDisk?.OSType?.ToString() ?? "N/A",
+                    virtualMachine.Data.OSProfile?.ComputerName ?? "N/A",
+                    virtualMachine.Data.Priority?.ToString() ?? "Regular",
+                    GetDiskSummary(virtualMachine),
+                    GetZonesSummary(virtualMachine),
+                    GetTagsSummary(virtualMachine),
                     powerStateCode,
                     powerStateDisplay));
             }
@@ -79,14 +85,53 @@ public sealed class AzureVmService : IAzureVmService
 
     public async Task StartVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
     {
-        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(virtualMachine.ResourceId));
+        await StartVirtualMachineAsync(virtualMachine.ResourceId, cancellationToken);
+    }
+
+    public async Task StartVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default)
+    {
+        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
         await resource.PowerOnAsync(WaitUntil.Completed, cancellationToken);
     }
 
     public async Task DeallocateVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
     {
-        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(virtualMachine.ResourceId));
+        await DeallocateVirtualMachineAsync(virtualMachine.ResourceId, cancellationToken);
+    }
+
+    public async Task DeallocateVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default)
+    {
+        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
         await resource.DeallocateAsync(WaitUntil.Completed, cancellationToken: cancellationToken);
+    }
+
+    private static string GetDiskSummary(VirtualMachineResource virtualMachine)
+    {
+        string osDisk = virtualMachine.Data.StorageProfile?.OSDisk?.DiskSizeGB is int osDiskSize
+            ? $"OS {osDiskSize} GB"
+            : "OS disk";
+        int dataDiskCount = virtualMachine.Data.StorageProfile?.DataDisks.Count ?? 0;
+
+        return dataDiskCount == 0
+            ? osDisk
+            : $"{osDisk}, {dataDiskCount} data disk(s)";
+    }
+
+    private static string GetTagsSummary(VirtualMachineResource virtualMachine)
+    {
+        if (virtualMachine.Data.Tags.Count == 0)
+        {
+            return "None";
+        }
+
+        return string.Join(", ", virtualMachine.Data.Tags.Select(tag => $"{tag.Key}={tag.Value}"));
+    }
+
+    private static string GetZonesSummary(VirtualMachineResource virtualMachine)
+    {
+        return virtualMachine.Data.Zones.Count == 0
+            ? "None"
+            : string.Join(", ", virtualMachine.Data.Zones);
     }
 
     private static async Task<(string Code, string Display)> GetPowerStateAsync(

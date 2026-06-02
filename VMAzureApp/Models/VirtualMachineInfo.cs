@@ -17,6 +17,12 @@ public sealed class VirtualMachineInfo : ObservableObject
         string name,
         string location,
         string size,
+        string osType,
+        string computerName,
+        string priority,
+        string diskSummary,
+        string zones,
+        string tags,
         string powerStateCode,
         string powerStateDisplay)
     {
@@ -27,6 +33,12 @@ public sealed class VirtualMachineInfo : ObservableObject
         Name = name;
         Location = location;
         Size = size;
+        OsType = osType;
+        ComputerName = computerName;
+        Priority = priority;
+        DiskSummary = diskSummary;
+        Zones = zones;
+        Tags = tags;
         _powerStateCode = powerStateCode;
         _powerStateDisplay = powerStateDisplay;
     }
@@ -44,6 +56,18 @@ public sealed class VirtualMachineInfo : ObservableObject
     public string Location { get; }
 
     public string Size { get; }
+
+    public string OsType { get; }
+
+    public string ComputerName { get; }
+
+    public string Priority { get; }
+
+    public string DiskSummary { get; }
+
+    public string Zones { get; }
+
+    public string Tags { get; }
 
     public string PowerStateCode
     {

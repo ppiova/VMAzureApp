@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
+using System.Windows.Threading;
 using VMAzureApp.Models;
 using VMAzureApp.Services;
 
@@ -8,23 +11,62 @@ namespace VMAzureApp.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject
 {
     private readonly IAzureVmService _azureVmService;
+    private readonly SemaphoreSlim _scheduleSemaphore = new(1, 1);
+    private readonly VmScheduleStore _scheduleStore = new();
+    private readonly DispatcherTimer _scheduleTimer;
     private string _errorMessage = string.Empty;
     private bool _isBusy;
+    private ScheduleActionOption _newScheduleAction;
+    private bool _newScheduleFriday = true;
+    private bool _newScheduleMonday = true;
+    private bool _newScheduleSaturday;
+    private string _newScheduleTime = "18:00";
+    private bool _newScheduleSunday;
+    private bool _newScheduleThursday = true;
+    private bool _newScheduleTuesday = true;
+    private bool _newScheduleWednesday = true;
     private AzureSubscriptionInfo? _selectedSubscription;
+    private VirtualMachineInfo? _selectedVirtualMachine;
     private string _statusMessage = "Ready.";
 
     public MainWindowViewModel(IAzureVmService azureVmService)
     {
         _azureVmService = azureVmService;
+        _newScheduleAction = ScheduleActions[1];
         LoadSubscriptionsCommand = new AsyncRelayCommand(LoadSubscriptionsAsync, () => !IsBusy);
         RefreshCommand = new AsyncRelayCommand(RefreshVirtualMachinesAsync, () => !IsBusy && SelectedSubscription is not null);
         StartVmCommand = new AsyncRelayCommand(StartVirtualMachineAsync, parameter => CanStartVirtualMachine(parameter));
         StopVmCommand = new AsyncRelayCommand(StopVirtualMachineAsync, parameter => CanStopVirtualMachine(parameter));
+        AddScheduleCommand = new AsyncRelayCommand(AddScheduleAsync, () => SelectedVirtualMachine is not null);
+        DeleteScheduleCommand = new AsyncRelayCommand(DeleteScheduleAsync, parameter => parameter is VmSchedule);
+        RunScheduleNowCommand = new AsyncRelayCommand(RunScheduleNowAsync, parameter => parameter is VmSchedule schedule && schedule.Enabled);
+
+        Schedules.CollectionChanged += OnSchedulesChanged;
+        foreach (VmSchedule schedule in _scheduleStore.Load())
+        {
+            TrackSchedule(schedule);
+            Schedules.Add(schedule);
+        }
+
+        _scheduleTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(30)
+        };
+        _scheduleTimer.Tick += async (_, _) => await RunDueSchedulesAsync();
+        _scheduleTimer.Start();
     }
 
     public ObservableCollection<AzureSubscriptionInfo> Subscriptions { get; } = [];
 
     public ObservableCollection<VirtualMachineInfo> VirtualMachines { get; } = [];
+
+    public ObservableCollection<VmSchedule> Schedules { get; } = [];
+
+    public IReadOnlyList<ScheduleActionOption> ScheduleActions { get; } =
+    [
+        new(VmScheduleAction.Start, "Start"),
+        new(VmScheduleAction.StopDeallocate, "Stop / Deallocate")
+    ];
 
     public AsyncRelayCommand LoadSubscriptionsCommand { get; }
 
@@ -33,6 +75,12 @@ public sealed class MainWindowViewModel : ObservableObject
     public AsyncRelayCommand StartVmCommand { get; }
 
     public AsyncRelayCommand StopVmCommand { get; }
+
+    public AsyncRelayCommand AddScheduleCommand { get; }
+
+    public AsyncRelayCommand DeleteScheduleCommand { get; }
+
+    public AsyncRelayCommand RunScheduleNowCommand { get; }
 
     public AzureSubscriptionInfo? SelectedSubscription
     {
@@ -44,6 +92,75 @@ public sealed class MainWindowViewModel : ObservableObject
                 RefreshCommand.RaiseCanExecuteChanged();
             }
         }
+    }
+
+    public VirtualMachineInfo? SelectedVirtualMachine
+    {
+        get => _selectedVirtualMachine;
+        set
+        {
+            if (SetProperty(ref _selectedVirtualMachine, value))
+            {
+                AddScheduleCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(HasSelectedVirtualMachine));
+            }
+        }
+    }
+
+    public bool HasSelectedVirtualMachine => SelectedVirtualMachine is not null;
+
+    public ScheduleActionOption NewScheduleAction
+    {
+        get => _newScheduleAction;
+        set => SetProperty(ref _newScheduleAction, value);
+    }
+
+    public string NewScheduleTime
+    {
+        get => _newScheduleTime;
+        set => SetProperty(ref _newScheduleTime, value);
+    }
+
+    public bool NewScheduleMonday
+    {
+        get => _newScheduleMonday;
+        set => SetProperty(ref _newScheduleMonday, value);
+    }
+
+    public bool NewScheduleTuesday
+    {
+        get => _newScheduleTuesday;
+        set => SetProperty(ref _newScheduleTuesday, value);
+    }
+
+    public bool NewScheduleWednesday
+    {
+        get => _newScheduleWednesday;
+        set => SetProperty(ref _newScheduleWednesday, value);
+    }
+
+    public bool NewScheduleThursday
+    {
+        get => _newScheduleThursday;
+        set => SetProperty(ref _newScheduleThursday, value);
+    }
+
+    public bool NewScheduleFriday
+    {
+        get => _newScheduleFriday;
+        set => SetProperty(ref _newScheduleFriday, value);
+    }
+
+    public bool NewScheduleSaturday
+    {
+        get => _newScheduleSaturday;
+        set => SetProperty(ref _newScheduleSaturday, value);
+    }
+
+    public bool NewScheduleSunday
+    {
+        get => _newScheduleSunday;
+        set => SetProperty(ref _newScheduleSunday, value);
     }
 
     public bool IsBusy
@@ -95,6 +212,7 @@ public sealed class MainWindowViewModel : ObservableObject
             StatusMessage = "Signing in to Azure...";
             Subscriptions.Clear();
             VirtualMachines.Clear();
+            SelectedVirtualMachine = null;
             RaiseDashboardCountsChanged();
 
             IReadOnlyList<AzureSubscriptionInfo> subscriptions = await _azureVmService.GetSubscriptionsAsync();
@@ -134,6 +252,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         StatusMessage = $"Loading VMs from {SelectedSubscription.Name}...";
         VirtualMachines.Clear();
+        SelectedVirtualMachine = null;
         RaiseDashboardCountsChanged();
 
         IReadOnlyList<VirtualMachineInfo> virtualMachines = await _azureVmService.GetVirtualMachinesAsync(SelectedSubscription);
@@ -143,6 +262,7 @@ public sealed class MainWindowViewModel : ObservableObject
             VirtualMachines.Add(virtualMachine);
         }
 
+        SelectedVirtualMachine = VirtualMachines.FirstOrDefault();
         RaiseDashboardCountsChanged();
 
         StatusMessage = virtualMachines.Count == 0
@@ -191,6 +311,168 @@ public sealed class MainWindowViewModel : ObservableObject
             RaiseDashboardCountsChanged();
             StatusMessage = $"{virtualMachine.Name} is stopped and deallocated.";
         });
+    }
+
+    private async Task AddScheduleAsync()
+    {
+        if (SelectedVirtualMachine is null)
+        {
+            return;
+        }
+
+        if (!TimeOnly.TryParse(NewScheduleTime, out TimeOnly parsedTime))
+        {
+            ErrorMessage = "Use a valid schedule time, for example 18:00.";
+            StatusMessage = "Schedule was not added.";
+            return;
+        }
+
+        if (!NewScheduleMonday && !NewScheduleTuesday && !NewScheduleWednesday && !NewScheduleThursday
+            && !NewScheduleFriday && !NewScheduleSaturday && !NewScheduleSunday)
+        {
+            ErrorMessage = "Select at least one day for the schedule.";
+            StatusMessage = "Schedule was not added.";
+            return;
+        }
+
+        VmSchedule schedule = new()
+        {
+            ResourceId = SelectedVirtualMachine.ResourceId,
+            VmName = SelectedVirtualMachine.Name,
+            SubscriptionName = SelectedVirtualMachine.SubscriptionName,
+            ResourceGroupName = SelectedVirtualMachine.ResourceGroupName,
+            Action = NewScheduleAction.Action,
+            ScheduledTime = parsedTime.ToString("HH:mm"),
+            Monday = NewScheduleMonday,
+            Tuesday = NewScheduleTuesday,
+            Wednesday = NewScheduleWednesday,
+            Thursday = NewScheduleThursday,
+            Friday = NewScheduleFriday,
+            Saturday = NewScheduleSaturday,
+            Sunday = NewScheduleSunday,
+            LastResult = "Waiting"
+        };
+
+        TrackSchedule(schedule);
+        Schedules.Add(schedule);
+        SaveSchedules();
+        ErrorMessage = string.Empty;
+        StatusMessage = $"Added schedule: {schedule.Summary}.";
+        await Task.CompletedTask;
+    }
+
+    private async Task DeleteScheduleAsync(object? parameter)
+    {
+        if (parameter is not VmSchedule schedule)
+        {
+            return;
+        }
+
+        UntrackSchedule(schedule);
+        Schedules.Remove(schedule);
+        SaveSchedules();
+        StatusMessage = $"Deleted schedule for {schedule.VmName}.";
+        await Task.CompletedTask;
+    }
+
+    private async Task RunScheduleNowAsync(object? parameter)
+    {
+        if (parameter is not VmSchedule schedule)
+        {
+            return;
+        }
+
+        await ExecuteScheduleAsync(schedule, "Manual schedule run");
+    }
+
+    private async Task RunDueSchedulesAsync()
+    {
+        if (!await _scheduleSemaphore.WaitAsync(0))
+        {
+            return;
+        }
+
+        try
+        {
+            DateTime now = DateTime.Now;
+            foreach (VmSchedule schedule in Schedules.Where(schedule => IsDue(schedule, now)).ToList())
+            {
+                await ExecuteScheduleAsync(schedule, "Scheduled run");
+            }
+        }
+        finally
+        {
+            _scheduleSemaphore.Release();
+        }
+    }
+
+    private async Task ExecuteScheduleAsync(VmSchedule schedule, string source)
+    {
+        schedule.LastRunLocal = DateTime.Now;
+        schedule.LastResult = $"{source}: running";
+        SaveSchedules();
+
+        VirtualMachineInfo? loadedVm = VirtualMachines.FirstOrDefault(vm =>
+            vm.ResourceId.Equals(schedule.ResourceId, StringComparison.OrdinalIgnoreCase));
+
+        try
+        {
+            if (loadedVm is not null)
+            {
+                loadedVm.IsOperationInProgress = true;
+                loadedVm.OperationStatus = schedule.Action == VmScheduleAction.Start ? "Starting..." : "Stopping...";
+            }
+
+            if (schedule.Action == VmScheduleAction.Start)
+            {
+                await _azureVmService.StartVirtualMachineAsync(schedule.ResourceId);
+                loadedVm?.UpdatePowerState("PowerState/running", "VM running");
+            }
+            else
+            {
+                await _azureVmService.DeallocateVirtualMachineAsync(schedule.ResourceId);
+                loadedVm?.UpdatePowerState("PowerState/deallocated", "VM deallocated");
+            }
+
+            schedule.LastResult = $"{source}: success";
+            StatusMessage = $"{source} completed: {schedule.Summary}.";
+            ErrorMessage = string.Empty;
+            RaiseDashboardCountsChanged();
+        }
+        catch (Exception ex)
+        {
+            schedule.LastResult = $"{source}: failed - {ex.Message}";
+            ErrorMessage = ex.Message;
+            StatusMessage = $"{source} failed for {schedule.VmName}.";
+        }
+        finally
+        {
+            if (loadedVm is not null)
+            {
+                loadedVm.IsOperationInProgress = false;
+                loadedVm.OperationStatus = string.Empty;
+            }
+
+            SaveSchedules();
+            RaiseCommandStatesChanged();
+        }
+    }
+
+    private static bool IsDue(VmSchedule schedule, DateTime now)
+    {
+        if (!schedule.Enabled || !schedule.IsScheduledFor(now) || !schedule.TryGetScheduledTime(out TimeOnly scheduledTime))
+        {
+            return false;
+        }
+
+        if (schedule.LastRunLocal?.Date == now.Date)
+        {
+            return false;
+        }
+
+        DateTime scheduledDateTime = now.Date.Add(scheduledTime.ToTimeSpan());
+        TimeSpan catchUpWindow = TimeSpan.FromMinutes(90);
+        return now >= scheduledDateTime && now <= scheduledDateTime.Add(catchUpWindow);
     }
 
     private async Task RunBusyAsync(Func<Task> action)
@@ -252,6 +534,9 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshCommand.RaiseCanExecuteChanged();
         StartVmCommand.RaiseCanExecuteChanged();
         StopVmCommand.RaiseCanExecuteChanged();
+        AddScheduleCommand.RaiseCanExecuteChanged();
+        DeleteScheduleCommand.RaiseCanExecuteChanged();
+        RunScheduleNowCommand.RaiseCanExecuteChanged();
     }
 
     private void RaiseDashboardCountsChanged()
@@ -259,5 +544,47 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TotalVmCount));
         OnPropertyChanged(nameof(RunningVmCount));
         OnPropertyChanged(nameof(StoppedVmCount));
+    }
+
+    private void OnSchedulesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (VmSchedule schedule in e.NewItems.OfType<VmSchedule>())
+            {
+                TrackSchedule(schedule);
+            }
+        }
+
+        if (e.OldItems is not null)
+        {
+            foreach (VmSchedule schedule in e.OldItems.OfType<VmSchedule>())
+            {
+                UntrackSchedule(schedule);
+            }
+        }
+
+        SaveSchedules();
+    }
+
+    private void TrackSchedule(VmSchedule schedule)
+    {
+        schedule.PropertyChanged -= OnSchedulePropertyChanged;
+        schedule.PropertyChanged += OnSchedulePropertyChanged;
+    }
+
+    private void UntrackSchedule(VmSchedule schedule)
+    {
+        schedule.PropertyChanged -= OnSchedulePropertyChanged;
+    }
+
+    private void OnSchedulePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        SaveSchedules();
+    }
+
+    private void SaveSchedules()
+    {
+        _scheduleStore.Save(Schedules);
     }
 }

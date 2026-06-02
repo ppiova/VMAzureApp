@@ -180,66 +180,202 @@
             </Border>
         </UniformGrid>
 
-        <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="0">
-            <DataGrid ItemsSource="{Binding VirtualMachines}"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      CanUserDeleteRows="False"
-                      IsReadOnly="True"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="None"
-                      RowHeaderWidth="0"
-                      Background="White"
-                      BorderThickness="0"
-                      AlternatingRowBackground="#F8FAFC"
-                      RowBackground="White"
-                      HorizontalGridLinesBrush="#E2E8F0"
-                      VerticalGridLinesBrush="Transparent">
-                <DataGrid.Resources>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#F8FAFC" />
-                        <Setter Property="Foreground" Value="#475569" />
-                        <Setter Property="FontWeight" Value="SemiBold" />
-                        <Setter Property="Padding" Value="12,10" />
-                        <Setter Property="BorderThickness" Value="0,0,0,1" />
-                        <Setter Property="BorderBrush" Value="#E2E8F0" />
-                    </Style>
-                    <Style TargetType="DataGridCell">
-                        <Setter Property="Padding" Value="12,8" />
-                        <Setter Property="BorderThickness" Value="0" />
-                        <Setter Property="Foreground" Value="#0F172A" />
-                    </Style>
-                </DataGrid.Resources>
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="VM" Binding="{Binding Name}" Width="2*" />
-                    <DataGridTextColumn Header="Resource group" Binding="{Binding ResourceGroupName}" Width="2*" />
-                    <DataGridTextColumn Header="Region" Binding="{Binding Location}" Width="*" />
-                    <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="*" />
-                    <DataGridTextColumn Header="Status" Binding="{Binding DisplayStatus}" Width="1.5*" />
-                    <DataGridTemplateColumn Header="Actions" Width="210">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="Start"
-                                            Margin="0,0,8,0"
-                                            Padding="10,5"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            IsEnabled="{Binding CanStart}"
-                                            Command="{Binding DataContext.StartVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button Content="Stop"
-                                            Padding="10,5"
-                                            Style="{StaticResource DangerButtonStyle}"
-                                            IsEnabled="{Binding CanStop}"
-                                            Command="{Binding DataContext.StopVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                            CommandParameter="{Binding}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                </DataGrid.Columns>
-            </DataGrid>
-        </Border>
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="380" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" Margin="0,0,14,0">
+                <DataGrid ItemsSource="{Binding VirtualMachines}"
+                          SelectedItem="{Binding SelectedVirtualMachine}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          IsReadOnly="True"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="None"
+                          RowHeaderWidth="0"
+                          Background="White"
+                          BorderThickness="0"
+                          AlternatingRowBackground="#F8FAFC"
+                          RowBackground="White"
+                          HorizontalGridLinesBrush="#E2E8F0"
+                          VerticalGridLinesBrush="Transparent">
+                    <DataGrid.Resources>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#F8FAFC" />
+                            <Setter Property="Foreground" Value="#475569" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Padding" Value="12,10" />
+                            <Setter Property="BorderThickness" Value="0,0,0,1" />
+                            <Setter Property="BorderBrush" Value="#E2E8F0" />
+                        </Style>
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="Padding" Value="12,8" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Foreground" Value="#0F172A" />
+                        </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="VM" Binding="{Binding Name}" Width="2*" />
+                        <DataGridTextColumn Header="Resource group" Binding="{Binding ResourceGroupName}" Width="2*" />
+                        <DataGridTextColumn Header="Region" Binding="{Binding Location}" Width="*" />
+                        <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="*" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding DisplayStatus}" Width="1.5*" />
+                        <DataGridTemplateColumn Header="Actions" Width="210">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Start"
+                                                Margin="0,0,8,0"
+                                                Padding="10,5"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                IsEnabled="{Binding CanStart}"
+                                                Command="{Binding DataContext.StartVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Stop"
+                                                Padding="10,5"
+                                                Style="{StaticResource DangerButtonStyle}"
+                                                IsEnabled="{Binding CanStop}"
+                                                Command="{Binding DataContext.StopVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="VM DETAILS" Style="{StaticResource DashboardLabelStyle}" />
+                            <TextBlock Text="{Binding SelectedVirtualMachine.Name}" FontSize="22" FontWeight="Bold" Foreground="#0F172A" Margin="0,6,0,12" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Subscription" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedVirtualMachine.SubscriptionName}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Resource group" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedVirtualMachine.ResourceGroupName}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Region" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedVirtualMachine.Location}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Size" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedVirtualMachine.Size}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="OS" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedVirtualMachine.OsType}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Computer" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedVirtualMachine.ComputerName}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Disks" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedVirtualMachine.DiskSummary}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Zones" Foreground="#64748B" Margin="0,0,8,8" />
+                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding SelectedVirtualMachine.Zones}" Margin="0,0,0,8" />
+                                <TextBlock Grid.Row="8" Grid.Column="0" Text="Tags" Foreground="#64748B" Margin="0,0,8,0" />
+                                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding SelectedVirtualMachine.Tags}" TextWrapping="Wrap" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="ADD SCHEDULE" Style="{StaticResource DashboardLabelStyle}" />
+                            <TextBlock Text="Schedules run in local time while the app is open or running in the tray."
+                                       Foreground="#64748B"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,12" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="110" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0"
+                                          ItemsSource="{Binding ScheduleActions}"
+                                          SelectedItem="{Binding NewScheduleAction}"
+                                          DisplayMemberPath="DisplayName"
+                                          Margin="0,0,8,8"
+                                          Padding="8,5" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding NewScheduleTime, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,0,8"
+                                         Padding="8,5" />
+                            </Grid>
+
+                            <UniformGrid Columns="4" Margin="0,0,0,12">
+                                <CheckBox Content="Mon" IsChecked="{Binding NewScheduleMonday}" />
+                                <CheckBox Content="Tue" IsChecked="{Binding NewScheduleTuesday}" />
+                                <CheckBox Content="Wed" IsChecked="{Binding NewScheduleWednesday}" />
+                                <CheckBox Content="Thu" IsChecked="{Binding NewScheduleThursday}" />
+                                <CheckBox Content="Fri" IsChecked="{Binding NewScheduleFriday}" />
+                                <CheckBox Content="Sat" IsChecked="{Binding NewScheduleSaturday}" />
+                                <CheckBox Content="Sun" IsChecked="{Binding NewScheduleSunday}" />
+                            </UniformGrid>
+
+                            <Button Content="Add schedule for selected VM"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding AddScheduleCommand}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="SCHEDULES" Style="{StaticResource DashboardLabelStyle}" />
+                            <ItemsControl ItemsSource="{Binding Schedules}" Margin="0,8,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="0,8">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <CheckBox DockPanel.Dock="Left"
+                                                              IsChecked="{Binding Enabled}"
+                                                              VerticalAlignment="Center"
+                                                              Margin="0,0,8,0" />
+                                                    <TextBlock Text="{Binding Summary}"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="Wrap" />
+                                                </DockPanel>
+                                                <TextBlock Text="{Binding LastResult}" Foreground="#64748B" TextWrapping="Wrap" Margin="24,4,0,6" />
+                                                <StackPanel Orientation="Horizontal" Margin="24,0,0,0">
+                                                    <Button Content="Run now"
+                                                            Padding="8,4"
+                                                            Margin="0,0,8,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Command="{Binding DataContext.RunScheduleNowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="Delete"
+                                                            Padding="8,4"
+                                                            Style="{StaticResource DangerButtonStyle}"
+                                                            Command="{Binding DataContext.DeleteScheduleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
 
         <Border Grid.Row="4"
                 Background="#FEF2F2"
