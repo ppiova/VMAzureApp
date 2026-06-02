@@ -104,8 +104,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          Get-ChildItem -Path VMAzureApp.Package\bin\Release -Recurse -Include *.msix,*.msixbundle,*.appinstaller,*.cer |
-            Copy-Item -Destination artifacts
+          $packages = Get-ChildItem -Path VMAzureApp.Package\bin -Recurse -Include *.msix,*.msixbundle,*.appinstaller,*.cer
+          if ($packages.Count -eq 0) {
+            Get-ChildItem -Path VMAzureApp.Package\bin -Recurse | Select-Object FullName
+            throw "No MSIX package files were found."
+          }
+
+          $packages | Copy-Item -Destination artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
