@@ -1,0 +1,111 @@
+name: Build MSIX
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_PROJECT: VMAzureApp.Package\VMAzureApp.Package.wapproj
+  MANIFEST_PATH: VMAzureApp.Package\Package.appxmanifest
+  PACKAGE_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+  PFX_BASE64: ${{ secrets.MSIX_PFX_BASE64 }}
+  PFX_PASSWORD: ${{ secrets.MSIX_PFX_PASSWORD }}
+
+jobs:
+  build-msix:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Resolve package version and publisher
+        shell: pwsh
+        run: |
+          $rawVersion = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.0.0" }
+          $parts = $rawVersion.Split(".")
+          while ($parts.Count -lt 4) { $parts += "0" }
+          $version = ($parts[0..3] -join ".")
+          $publisher = if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) { "CN=AzureVMManager" } else { $env:PACKAGE_PUBLISHER }
+
+          $manifest = Get-Content $env:MANIFEST_PATH -Raw
+          $manifest = $manifest -replace 'Version="[^"]+"', "Version=""$version"""
+          $manifest = $manifest -replace 'Publisher="[^"]+"', "Publisher=""$publisher"""
+          Set-Content -Path $env:MANIFEST_PATH -Value $manifest -Encoding UTF8
+
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "EFFECTIVE_PUBLISHER=$publisher" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Prepare signing certificate
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "AzureVMManager.msix.pfx"
+          $password = if ([string]::IsNullOrWhiteSpace($env:PFX_PASSWORD)) {
+            [System.Guid]::NewGuid().ToString("N")
+          } else {
+            $env:PFX_PASSWORD
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64)) {
+            $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+            $cert = New-SelfSignedCertificate `
+              -Type Custom `
+              -Subject $env:EFFECTIVE_PUBLISHER `
+              -KeyUsage DigitalSignature `
+              -FriendlyName "Azure VM Manager MSIX Signing" `
+              -CertStoreLocation "Cert:\CurrentUser\My" `
+              -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
+            Export-PfxCertificate -Cert $cert -FilePath $certPath -Password $securePassword | Out-Null
+          } else {
+            [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:PFX_BASE64))
+          }
+
+          "CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CERT_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: dotnet restore .\VMAzureApp\VMAzureApp.csproj
+
+      - name: Build MSIX
+        shell: pwsh
+        run: |
+          msbuild $env:PACKAGE_PROJECT `
+            /restore `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxPackageSigningEnabled=true `
+            /p:PackageCertificateKeyFile="$env:CERT_PATH" `
+            /p:PackageCertificatePassword="$env:CERT_PASSWORD"
+
+      - name: Collect package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Get-ChildItem -Path VMAzureApp.Package\bin\Release -Recurse -Include *.msix,*.msixbundle,*.appinstaller,*.cer |
+            Copy-Item -Destination artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AzureVMManager-MSIX-${{ env.PACKAGE_VERSION }}
+          path: artifacts\*
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts\*

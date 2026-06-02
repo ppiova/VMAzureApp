@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="VMAzureApp/VMAzureApp.csproj" />
+  <Project Path="VMAzureApp.Package/VMAzureApp.Package.wapproj" />
+</Solution>

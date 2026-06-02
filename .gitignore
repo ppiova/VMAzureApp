@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.pfx
+*.cer
+TestResults/
+artifacts/
+publish/
