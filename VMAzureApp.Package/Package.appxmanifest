@@ -12,8 +12,8 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Azure VM Manager</DisplayName>
-    <PublisherDisplayName>ppiova</PublisherDisplayName>
+    <DisplayName>Azure VM Manager for Windows</DisplayName>
+    <PublisherDisplayName>Pablito Piova</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
