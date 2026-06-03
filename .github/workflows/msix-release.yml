@@ -39,7 +39,7 @@ jobs:
           $parts = $rawVersion.Split(".")
           while ($parts.Count -lt 4) { $parts += "0" }
           $version = ($parts[0..3] -join ".")
-          $publisher = if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) { "CN=AzureVMManager" } else { $env:PACKAGE_PUBLISHER }
+          $publisher = if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) { "CN=9C5245CA-C92C-4BF3-8E4D-810F66F8811F" } else { $env:PACKAGE_PUBLISHER }
 
           [xml]$manifest = Get-Content $env:MANIFEST_PATH
           $manifest.Package.Identity.Version = $version

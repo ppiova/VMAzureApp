@@ -6,9 +6,9 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="ppiova.AzureVMManager"
-    Publisher="CN=AzureVMManager"
-    Version="1.0.0.0"
+    Name="PablitoPiova.AzureVMManagerforWindows"
+    Publisher="CN=9C5245CA-C92C-4BF3-8E4D-810F66F8811F"
+    Version="1.0.7.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
@@ -28,7 +28,7 @@
   <Applications>
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Azure VM Manager"
+        DisplayName="Azure VM Manager for Windows"
         Description="Manage Azure virtual machines from the desktop."
         BackgroundColor="#2563EB"
         Square150x150Logo="Assets\Square150x150Logo.png"
