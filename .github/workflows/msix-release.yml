@@ -103,23 +103,65 @@ jobs:
       - name: Collect package
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          New-Item -ItemType Directory -Path artifacts\package -Force | Out-Null
           $packages = Get-ChildItem -Path VMAzureApp.Package\AppPackages -Recurse -Include *.msix,*.msixbundle,*.appinstaller,*.cer
           if ($packages.Count -eq 0) {
             Get-ChildItem -Path VMAzureApp.Package\AppPackages -Recurse | Select-Object FullName
             throw "No MSIX package files were found."
           }
 
-          $packages | Copy-Item -Destination artifacts
+          $packages | Copy-Item -Destination artifacts\package
+
+          @'
+          $ErrorActionPreference = "Stop"
+
+          $packageDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+          $certificate = Get-ChildItem -Path $packageDirectory -Filter *.cer | Select-Object -First 1
+          $package = Get-ChildItem -Path $packageDirectory -File |
+            Where-Object { $_.Extension -in ".msix", ".msixbundle" } |
+            Select-Object -First 1
+
+          if ($null -eq $certificate) {
+              throw "No certificate file (*.cer) was found next to this script."
+          }
+
+          if ($null -eq $package) {
+              throw "No app package (*.msix or *.msixbundle) was found next to this script."
+          }
+
+          Write-Host "Trusting certificate for the current user..."
+          Import-Certificate -FilePath $certificate.FullName -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+
+          Write-Host "Installing Azure VM Manager..."
+          Add-AppxPackage -Path $package.FullName
+
+          Write-Host "Azure VM Manager installed successfully."
+          '@ | Set-Content -Path artifacts\package\Install-AzureVMManager.ps1 -Encoding UTF8
+
+          Copy-Item artifacts\package\* -Destination artifacts
+          Compress-Archive -Path artifacts\package\* -DestinationPath "artifacts\AzureVMManager-MSIX-$env:PACKAGE_VERSION.zip" -Force
+          Remove-Item artifacts\package -Recurse -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AzureVMManager-MSIX-${{ env.PACKAGE_VERSION }}
-          path: artifacts\*
+          path: |
+            artifacts\*.msix
+            artifacts\*.cer
+            artifacts\*.ps1
+            artifacts\*.zip
 
       - name: Publish GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts\*
+          files: |
+            artifacts\*.msix
+            artifacts\*.cer
+            artifacts\*.ps1
+            artifacts\*.zip
+          body: |
+            Download `AzureVMManager-MSIX-${{ env.PACKAGE_VERSION }}.zip`, extract it, then run `Install-AzureVMManager.ps1`.
+
+            The package is signed. If this release was built without a trusted code-signing certificate, Windows requires trusting the included `.cer` certificate for the current user before installing the `.msix`.

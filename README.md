@@ -52,6 +52,8 @@ git push origin v1.0.0
 
 See [PACKAGING.md](PACKAGING.md) for signing certificate and GitHub Secrets setup.
 
+If Windows shows certificate error `0x800B010A`, download the release ZIP and run `Install-AzureVMManager.ps1`, or import the included `.cer` before opening the `.msix`.
+
 ## Built with GitHub Copilot
 
 This project was built with [GitHub Copilot](https://github.com/features/copilot), a developer tool for AI-assisted coding and vibe coding workflows.
