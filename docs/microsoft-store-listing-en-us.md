@@ -1,19 +1,19 @@
-# Azure VM Manager for Windows | Store listing - English (United States)
+# Cloud VM Manager for Windows | Store listing - English (United States)
 
 ## Product name
 
-Azure VM Manager for Windows
+Cloud VM Manager for Windows
 
 ## Description
 
-Azure VM Manager for Windows is a desktop application that helps Azure administrators, cloud engineers, developers, and IT professionals manage Azure virtual machines directly from Windows.
+Cloud VM Manager for Windows is a desktop application that helps cloud administrators, cloud engineers, developers, and IT professionals manage virtual machines directly from Windows.
 
-The app provides a simple Windows desktop experience for viewing and operating virtual machines across Azure subscriptions without opening the Azure portal.
+The app provides a simple Windows desktop experience for viewing and operating virtual machines across cloud subscriptions without opening a web portal.
 
 Features include:
 
-- Sign in with your Microsoft Azure account
-- View accessible Azure subscriptions and virtual machines
+- Sign in with your cloud account
+- View accessible subscriptions and virtual machines
 - See VM power state and important VM details
 - Start virtual machines
 - Stop and deallocate virtual machines to help reduce compute costs
@@ -23,7 +23,7 @@ Features include:
 - Use a modern Windows desktop interface
 - Authenticate securely through Microsoft identity services
 
-Azure VM Manager for Windows does not store Azure credentials. Authentication is handled through Microsoft identity services, and all Azure operations depend on the permissions granted to the signed-in Azure account.
+Cloud VM Manager for Windows does not store cloud credentials. Authentication is handled through Microsoft identity services, and all resource operations depend on the permissions granted to the signed-in account.
 
 Local schedules run only while the app is open or running in the system tray.
 
@@ -31,12 +31,12 @@ Local schedules run only while the app is open or running in the system tray.
 
 Initial Microsoft Store submission.
 
-This version includes Azure sign-in, subscription and VM listing, VM start and stop/deallocate actions, local VM schedules, system tray integration, VM details, and MSIX packaging.
+This version includes sign-in, subscription and VM listing, VM start and stop/deallocate actions, local VM schedules, system tray integration, VM details, and MSIX packaging.
 
 ## Product features
 
-- Sign in with your Microsoft Azure account
-- View Azure subscriptions and virtual machines
+- Sign in with your cloud account
+- View subscriptions and virtual machines
 - Start virtual machines from Windows
 - Stop and deallocate virtual machines
 - Schedule VM start and stop/deallocate actions
@@ -68,29 +68,29 @@ Generated assets:
 
 ## Short title
 
-Azure VM Manager
+Cloud VM Manager
 
 ## Voice title
 
-Azure VM Manager
+Cloud VM Manager
 
 ## Short description
 
-Manage Azure virtual machines from Windows. Sign in with your Azure account, view VMs across subscriptions, start or stop/deallocate machines, create local schedules, and access quick actions from the system tray.
+Manage cloud virtual machines from Windows. Sign in, view VMs across subscriptions, start or stop/deallocate machines, create local schedules, and access quick actions from the system tray.
 
 ## Keywords
 
-- Azure VM
 - virtual machines
 - cloud management
-- Azure desktop
 - VM scheduler
 - system tray
-- Azure admin
+- cloud admin
+- desktop tools
+- compute manager
 
 ## Copyright and trademark info
 
-Copyright (c) 2026 Pablito Piova. Azure and Microsoft are trademarks of Microsoft Corporation.
+Copyright (c) 2026 Pablito Piova. Microsoft and related service names are trademarks of Microsoft Corporation.
 
 ## Additional license terms
 
@@ -102,4 +102,4 @@ Pablito Piova
 
 ## Notes for certification
 
-This app uses the `runFullTrust` capability because it is a packaged Windows desktop application built with WPF. It uses full trust to run as a standard desktop application, provide a system tray icon, and interact with the local user session. Azure access is performed through Microsoft identity services and Azure SDK APIs using the signed-in user's permissions.
+This app uses the `runFullTrust` capability because it is a packaged desktop application built with WPF. It uses full trust to run as a standard desktop application, provide a system tray icon, and interact with the local user session. Cloud resource access is performed through Microsoft identity services and SDK APIs using the signed-in user's permissions.

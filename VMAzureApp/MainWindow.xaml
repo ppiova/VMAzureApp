@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Azure VM Manager" Height="650" Width="1100"
+        Title="Cloud VM Manager" Height="650" Width="1100"
         MinHeight="520" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="#F4F7FB"
@@ -112,7 +112,7 @@
 
         <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,16">
             <StackPanel DockPanel.Dock="Left">
-                <TextBlock Text="Azure VM Manager" FontSize="30" FontWeight="Bold" Foreground="#0F172A" />
+                <TextBlock Text="Cloud VM Manager" FontSize="30" FontWeight="Bold" Foreground="#0F172A" />
                 <TextBlock Text="Manage virtual machines across subscriptions without opening the Azure portal."
                            Foreground="#64748B"
                            FontSize="14"

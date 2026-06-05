@@ -74,7 +74,7 @@ jobs:
               -Type Custom `
               -Subject $env:EFFECTIVE_PUBLISHER `
               -KeyUsage DigitalSignature `
-              -FriendlyName "Azure VM Manager MSIX Signing" `
+              -FriendlyName "Cloud VM Manager MSIX Signing" `
               -CertStoreLocation "Cert:\CurrentUser\My" `
               -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
             Export-PfxCertificate -Cert $cert -FilePath $certPath -Password $securePassword | Out-Null
@@ -132,10 +132,10 @@ jobs:
           Write-Host "Trusting certificate for the current user..."
           Import-Certificate -FilePath $certificate.FullName -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
 
-          Write-Host "Installing Azure VM Manager..."
+          Write-Host "Installing Cloud VM Manager..."
           Add-AppxPackage -Path $package.FullName
 
-          Write-Host "Azure VM Manager installed successfully."
+          Write-Host "Cloud VM Manager installed successfully."
           '@ | Set-Content -Path artifacts\package\Install-AzureVMManager.ps1 -Encoding UTF8
 
           Copy-Item artifacts\package\* -Destination artifacts

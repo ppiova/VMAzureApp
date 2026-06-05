@@ -26,7 +26,7 @@ public sealed class SystemTrayService : IDisposable
         {
             ContextMenuStrip = _contextMenu,
             Icon = LoadTrayIcon(),
-            Text = "Azure VM Manager",
+            Text = "Cloud VM Manager",
             Visible = true
         };
 
@@ -39,7 +39,7 @@ public sealed class SystemTrayService : IDisposable
     {
         _notifyIcon.ShowBalloonTip(
             2500,
-            "Azure VM Manager is still running",
+            "Cloud VM Manager is still running",
             "Use the tray icon to open the app or manage loaded VMs.",
             Forms.ToolTipIcon.Info);
     }
@@ -61,7 +61,7 @@ public sealed class SystemTrayService : IDisposable
     {
         _contextMenu.Items.Clear();
 
-        _contextMenu.Items.Add(CreateMenuItem("Open Azure VM Manager", (_, _) => Dispatch(ShowMainWindow)));
+        _contextMenu.Items.Add(CreateMenuItem("Open Cloud VM Manager", (_, _) => Dispatch(ShowMainWindow)));
         _contextMenu.Items.Add(CreateMenuItem(
             "Refresh VMs",
             (_, _) => Dispatch(() => _viewModel.RefreshCommand.Execute(null)),
