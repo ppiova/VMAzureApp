@@ -74,6 +74,36 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
+    public void ChangingSubscription_AutomaticallyReloadsVirtualMachines()
+    {
+        AzureSubscriptionInfo subA = new("a", "Sub A");
+        AzureSubscriptionInfo subB = new("b", "Sub B");
+        VirtualMachineInfo vmA = Vm("a-web", "rg-a");
+        VirtualMachineInfo vmB1 = Vm("b-web", "rg-b");
+        VirtualMachineInfo vmB2 = Vm("b-db", "rg-b");
+
+        FakeAzureVmService service = new(
+            new[] { subA, subB },
+            subscription => subscription.Id == "b"
+                ? new[] { vmB1, vmB2 }
+                : new[] { vmA });
+
+        MainWindowViewModel viewModel = new(service);
+        viewModel.LoadSubscriptionsAsync().GetAwaiter().GetResult();
+
+        // Initial load: Sub A selected, one VM, one VM-list call.
+        Assert.Equal(1, viewModel.TotalVmCount);
+        Assert.Equal(1, service.GetVirtualMachinesCallCount);
+
+        // Switching subscription should reload without pressing Refresh.
+        viewModel.SelectedSubscription = subB;
+
+        Assert.Equal(2, service.GetVirtualMachinesCallCount);
+        Assert.Equal(2, viewModel.TotalVmCount);
+        Assert.Equal(2, ViewCount(viewModel));
+    }
+
+    [Fact]
     public void Selection_DrivesBulkCommandCounts()
     {
         MainWindowViewModel viewModel = CreateLoadedViewModel(

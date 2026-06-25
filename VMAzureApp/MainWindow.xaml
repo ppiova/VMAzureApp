@@ -147,6 +147,7 @@
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding Subscriptions}"
                           SelectedItem="{Binding SelectedSubscription}"
+                          IsEnabled="{Binding IsIdle}"
                           DisplayMemberPath="Name"
                           MinWidth="320"
                           Padding="10,6"

@@ -23,6 +23,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private IReadOnlyList<VirtualMachineInfo> _selectedVirtualMachines = [];
     private string _searchText = string.Empty;
     private bool _autoRefreshStatuses;
+    private bool _suppressSubscriptionAutoLoad;
     private string _errorMessage = string.Empty;
     private bool _isBusy;
     private ScheduleActionOption _newScheduleAction;
@@ -125,6 +126,14 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _selectedSubscription, value))
             {
                 RefreshCommand.RaiseCanExecuteChanged();
+
+                // Automatically reload VMs when the user picks another
+                // subscription. Suppressed during the initial sign-in load,
+                // which selects the first subscription and loads it itself.
+                if (!_suppressSubscriptionAutoLoad && value is not null)
+                {
+                    _ = RefreshVirtualMachinesAsync();
+                }
             }
         }
     }
@@ -260,10 +269,13 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(IsIdle));
                 RaiseCommandStatesChanged();
             }
         }
     }
+
+    public bool IsIdle => !IsBusy;
 
     public string StatusMessage
     {
@@ -298,29 +310,39 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         await RunBusyAsync(async () =>
         {
-            ErrorMessage = string.Empty;
-            StatusMessage = "Signing in to Azure...";
-            Subscriptions.Clear();
-            VirtualMachines.Clear();
-            SelectedVirtualMachine = null;
-            RaiseDashboardCountsChanged();
-
-            IReadOnlyList<AzureSubscriptionInfo> subscriptions = await _azureVmService.GetSubscriptionsAsync();
-
-            foreach (AzureSubscriptionInfo subscription in subscriptions)
+            // Selecting the first subscription below must not kick off its own
+            // auto-load; this method loads it explicitly once instead.
+            _suppressSubscriptionAutoLoad = true;
+            try
             {
-                Subscriptions.Add(subscription);
+                ErrorMessage = string.Empty;
+                StatusMessage = "Signing in to Azure...";
+                Subscriptions.Clear();
+                VirtualMachines.Clear();
+                SelectedVirtualMachine = null;
+                RaiseDashboardCountsChanged();
+
+                IReadOnlyList<AzureSubscriptionInfo> subscriptions = await _azureVmService.GetSubscriptionsAsync();
+
+                foreach (AzureSubscriptionInfo subscription in subscriptions)
+                {
+                    Subscriptions.Add(subscription);
+                }
+
+                SelectedSubscription = Subscriptions.FirstOrDefault();
+
+                if (SelectedSubscription is null)
+                {
+                    StatusMessage = "No accessible subscriptions were found for this user.";
+                    return;
+                }
+
+                await LoadVirtualMachinesCoreAsync();
             }
-
-            SelectedSubscription = Subscriptions.FirstOrDefault();
-
-            if (SelectedSubscription is null)
+            finally
             {
-                StatusMessage = "No accessible subscriptions were found for this user.";
-                return;
+                _suppressSubscriptionAutoLoad = false;
             }
-
-            await LoadVirtualMachinesCoreAsync();
         });
     }
 
