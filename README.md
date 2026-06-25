@@ -9,14 +9,15 @@ Cloud VM Manager is a Windows desktop app for managing Azure virtual machines ac
 ## Features
 
 - Interactive Microsoft Entra sign-in.
-- Lists accessible Azure subscriptions.
-- Lists virtual machines and power states.
-- Start VMs quickly.
-- Stop and deallocate VMs to reduce compute costs.
+- Lists accessible Azure subscriptions, and reloads virtual machines automatically when you switch subscription.
+- Fast VM listing: power states are fetched in parallel in a single subscription-wide query.
+- Search and filter virtual machines by name, resource group, region, size, OS, or status.
+- Start, stop/deallocate, restart, and hibernate virtual machines (hibernate is offered only for VMs that support it).
+- Select multiple VMs and start or stop them in bulk.
+- Live power-state refresh after every action, plus a manual refresh and an optional auto-refresh every 45 seconds.
 - Local schedules to start or stop/deallocate VMs on selected days and times.
 - VM details panel with subscription, resource group, region, size, OS, disks, zones, tags, and status.
-- Modern WPF UI.
-- System tray icon with quick actions.
+- Modern WPF UI with a system tray icon and quick actions.
 - MSIX packaging workflow for GitHub Releases.
 
 ## Requirements
