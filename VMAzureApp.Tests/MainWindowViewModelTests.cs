@@ -104,6 +104,34 @@ public class MainWindowViewModelTests
     }
 
     [Fact]
+    public void EmptyState_ShownWhenSubscriptionHasNoVms()
+    {
+        MainWindowViewModel viewModel = CreateLoadedViewModel();
+
+        Assert.True(viewModel.ShowEmptyState);
+        Assert.Equal("This subscription has no virtual machines.", viewModel.EmptyStateMessage);
+    }
+
+    [Fact]
+    public void EmptyState_HiddenWhenVmsExist()
+    {
+        MainWindowViewModel viewModel = CreateLoadedViewModel(Vm("web-01", "prod"));
+
+        Assert.False(viewModel.ShowEmptyState);
+    }
+
+    [Fact]
+    public void EmptyState_ShownWhenSearchMatchesNothing()
+    {
+        MainWindowViewModel viewModel = CreateLoadedViewModel(Vm("web-01", "prod"));
+
+        viewModel.SearchText = "no-such-vm";
+
+        Assert.True(viewModel.ShowEmptyState);
+        Assert.Equal("No virtual machines match your search.", viewModel.EmptyStateMessage);
+    }
+
+    [Fact]
     public void Selection_DrivesBulkCommandCounts()
     {
         MainWindowViewModel viewModel = CreateLoadedViewModel(

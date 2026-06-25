@@ -161,6 +161,8 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _searchText, value))
             {
                 VirtualMachinesView.Refresh();
+                OnPropertyChanged(nameof(ShowEmptyState));
+                OnPropertyChanged(nameof(EmptyStateMessage));
             }
         }
     }
@@ -270,12 +272,20 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _isBusy, value))
             {
                 OnPropertyChanged(nameof(IsIdle));
+                OnPropertyChanged(nameof(ShowEmptyState));
                 RaiseCommandStatesChanged();
             }
         }
     }
 
     public bool IsIdle => !IsBusy;
+
+    /// <summary>True when a subscription is loaded but the grid has no rows to show.</summary>
+    public bool ShowEmptyState => !IsBusy && SelectedSubscription is not null && !VirtualMachinesView.Cast<object>().Any();
+
+    public string EmptyStateMessage => VirtualMachines.Count == 0
+        ? "This subscription has no virtual machines."
+        : "No virtual machines match your search.";
 
     public string StatusMessage
     {
@@ -836,6 +846,8 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TotalVmCount));
         OnPropertyChanged(nameof(RunningVmCount));
         OnPropertyChanged(nameof(StoppedVmCount));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(EmptyStateMessage));
     }
 
     private void OnSchedulesChanged(object? sender, NotifyCollectionChangedEventArgs e)

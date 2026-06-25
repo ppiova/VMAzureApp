@@ -246,6 +246,7 @@
                     </StackPanel>
                 </Grid>
 
+                <Grid>
                 <DataGrid x:Name="VmDataGrid"
                           ItemsSource="{Binding VirtualMachinesView}"
                           SelectedItem="{Binding SelectedVirtualMachine}"
@@ -323,6 +324,22 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="0,40,0,0"
+                            Visibility="{Binding ShowEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="No virtual machines"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="#334155"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding EmptyStateMessage}"
+                               Foreground="#94A3B8"
+                               Margin="0,6,0,0"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+                </Grid>
               </DockPanel>
             </Border>
 
@@ -464,6 +481,30 @@
                 Margin="0,12,0,0"
                 Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
             <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#991B1B" />
+        </Border>
+
+        <Border Grid.Row="0" Grid.RowSpan="5"
+                Background="#B3F4F7FB"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Border Background="White"
+                    CornerRadius="14"
+                    Padding="28,22"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel MinWidth="240">
+                    <ProgressBar IsIndeterminate="True"
+                                 Height="6"
+                                 Foreground="#2563EB"
+                                 Background="#E2E8F0"
+                                 BorderThickness="0" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Margin="0,12,0,0"
+                               HorizontalAlignment="Center"
+                               Foreground="#334155" />
+                </StackPanel>
+            </Border>
         </Border>
 
     </Grid>
