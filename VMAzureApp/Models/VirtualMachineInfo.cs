@@ -24,7 +24,8 @@ public sealed class VirtualMachineInfo : ObservableObject
         string zones,
         string tags,
         string powerStateCode,
-        string powerStateDisplay)
+        string powerStateDisplay,
+        bool supportsHibernation = false)
     {
         ResourceId = resourceId;
         SubscriptionId = subscriptionId;
@@ -39,6 +40,7 @@ public sealed class VirtualMachineInfo : ObservableObject
         DiskSummary = diskSummary;
         Zones = zones;
         Tags = tags;
+        SupportsHibernation = supportsHibernation;
         _powerStateCode = powerStateCode;
         _powerStateDisplay = powerStateDisplay;
     }
@@ -69,6 +71,8 @@ public sealed class VirtualMachineInfo : ObservableObject
 
     public string Tags { get; }
 
+    public bool SupportsHibernation { get; }
+
     public string PowerStateCode
     {
         get => _powerStateCode;
@@ -78,6 +82,8 @@ public sealed class VirtualMachineInfo : ObservableObject
             {
                 OnPropertyChanged(nameof(CanStart));
                 OnPropertyChanged(nameof(CanStop));
+                OnPropertyChanged(nameof(CanRestart));
+                OnPropertyChanged(nameof(CanHibernate));
             }
         }
     }
@@ -97,6 +103,8 @@ public sealed class VirtualMachineInfo : ObservableObject
             {
                 OnPropertyChanged(nameof(CanStart));
                 OnPropertyChanged(nameof(CanStop));
+                OnPropertyChanged(nameof(CanRestart));
+                OnPropertyChanged(nameof(CanHibernate));
                 OnPropertyChanged(nameof(DisplayStatus));
             }
         }
@@ -118,11 +126,18 @@ public sealed class VirtualMachineInfo : ObservableObject
         ? OperationStatus
         : PowerStateDisplay;
 
-    public bool CanStart => !IsOperationInProgress && !PowerStateCode.Equals("PowerState/running", StringComparison.OrdinalIgnoreCase);
+    public bool IsRunning => PowerStateCode.Equals("PowerState/running", StringComparison.OrdinalIgnoreCase);
+
+    public bool CanStart => !IsOperationInProgress && !IsRunning;
 
     public bool CanStop => !IsOperationInProgress
         && !PowerStateCode.Equals("PowerState/deallocated", StringComparison.OrdinalIgnoreCase)
         && !PowerStateCode.Equals("PowerState/stopped", StringComparison.OrdinalIgnoreCase);
+
+    // Restart and hibernate both require a running VM.
+    public bool CanRestart => !IsOperationInProgress && IsRunning;
+
+    public bool CanHibernate => !IsOperationInProgress && IsRunning && SupportsHibernation;
 
     public void UpdatePowerState(string code, string display)
     {

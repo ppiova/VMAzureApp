@@ -71,8 +71,8 @@ public sealed class AzureVmService : IAzureVmService
             MaxConcurrentInstanceViewQueries,
             async (virtualMachine, token) =>
             {
-                (string powerStateCode, string powerStateDisplay) = await GetPowerStateAsync(virtualMachine, token);
-                return MapToInfo(virtualMachine, subscription, powerStateCode, powerStateDisplay);
+                VmPowerState powerState = await GetPowerStateAsync(virtualMachine, token);
+                return MapToInfo(virtualMachine, subscription, powerState);
             },
             cancellationToken);
 
@@ -85,8 +85,7 @@ public sealed class AzureVmService : IAzureVmService
     private static VirtualMachineInfo MapToInfo(
         VirtualMachineResource virtualMachine,
         AzureSubscriptionInfo subscription,
-        string powerStateCode,
-        string powerStateDisplay)
+        VmPowerState powerState)
     {
         return new VirtualMachineInfo(
             virtualMachine.Id.ToString(),
@@ -102,8 +101,9 @@ public sealed class AzureVmService : IAzureVmService
             GetDiskSummary(virtualMachine),
             GetZonesSummary(virtualMachine),
             GetTagsSummary(virtualMachine),
-            powerStateCode,
-            powerStateDisplay);
+            powerState.Code,
+            powerState.Display,
+            virtualMachine.Data.AdditionalCapabilities?.HibernationEnabled ?? false);
     }
 
     public async Task StartVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
@@ -126,6 +126,34 @@ public sealed class AzureVmService : IAzureVmService
     {
         VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
         await resource.DeallocateAsync(WaitUntil.Completed, cancellationToken: cancellationToken);
+    }
+
+    public async Task RestartVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
+    {
+        await RestartVirtualMachineAsync(virtualMachine.ResourceId, cancellationToken);
+    }
+
+    public async Task RestartVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default)
+    {
+        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
+        await resource.RestartAsync(WaitUntil.Completed, cancellationToken);
+    }
+
+    public async Task HibernateVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
+    {
+        await HibernateVirtualMachineAsync(virtualMachine.ResourceId, cancellationToken);
+    }
+
+    public async Task HibernateVirtualMachineAsync(string resourceId, CancellationToken cancellationToken = default)
+    {
+        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
+        await resource.DeallocateAsync(WaitUntil.Completed, hibernate: true, cancellationToken: cancellationToken);
+    }
+
+    public async Task<VmPowerState> GetPowerStateAsync(string resourceId, CancellationToken cancellationToken = default)
+    {
+        VirtualMachineResource resource = Client.GetVirtualMachineResource(new ResourceIdentifier(resourceId));
+        return await GetPowerStateAsync(resource, cancellationToken);
     }
 
     private static string GetDiskSummary(VirtualMachineResource virtualMachine)
@@ -157,7 +185,7 @@ public sealed class AzureVmService : IAzureVmService
             : string.Join(", ", virtualMachine.Data.Zones);
     }
 
-    private static async Task<(string Code, string Display)> GetPowerStateAsync(
+    private static async Task<VmPowerState> GetPowerStateAsync(
         VirtualMachineResource virtualMachine,
         CancellationToken cancellationToken)
     {
@@ -171,8 +199,8 @@ public sealed class AzureVmService : IAzureVmService
                     && status.Code.StartsWith("PowerState/", StringComparison.OrdinalIgnoreCase));
 
             return powerState is null
-                ? ("PowerState/unknown", "Unknown state")
-                : (powerState.Code ?? "PowerState/unknown", powerState.DisplayStatus ?? powerState.Code ?? "Unknown state");
+                ? new VmPowerState("PowerState/unknown", "Unknown state")
+                : new VmPowerState(powerState.Code ?? "PowerState/unknown", powerState.DisplayStatus ?? powerState.Code ?? "Unknown state");
         }
         catch (OperationCanceledException)
         {
@@ -182,7 +210,7 @@ public sealed class AzureVmService : IAzureVmService
         {
             // A single VM failing to report its status should not break the
             // whole listing; show it as unknown instead.
-            return ("PowerState/unknown", "Unknown state");
+            return new VmPowerState("PowerState/unknown", "Unknown state");
         }
     }
 }

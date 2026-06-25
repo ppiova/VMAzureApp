@@ -52,4 +52,28 @@ internal static class ConcurrentTasks
             }
         }
     }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> for each item of <paramref name="source"/>,
+    /// at most <paramref name="maxConcurrency"/> at a time. Like <see cref="MapAsync"/>
+    /// but for work that produces no result.
+    /// </summary>
+    public static Task RunAsync<TSource>(
+        IReadOnlyList<TSource> source,
+        int maxConcurrency,
+        Func<TSource, CancellationToken, Task> action,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        return MapAsync(
+            source,
+            maxConcurrency,
+            async (item, token) =>
+            {
+                await action(item, token);
+                return true;
+            },
+            cancellationToken);
+    }
 }
