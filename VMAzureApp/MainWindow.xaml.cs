@@ -9,11 +9,10 @@ public partial class MainWindow : Window
 {
     private readonly SystemTrayService _systemTrayService;
 
-    public MainWindow()
+    public MainWindow(MainWindowViewModel viewModel)
     {
         InitializeComponent();
 
-        MainWindowViewModel viewModel = new(new AzureVmService());
         DataContext = viewModel;
         _systemTrayService = new SystemTrayService(this, viewModel);
 

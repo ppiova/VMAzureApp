@@ -395,7 +395,7 @@ public sealed class MainWindowViewModel : ObservableObject
         try
         {
             DateTime now = DateTime.Now;
-            foreach (VmSchedule schedule in Schedules.Where(schedule => IsDue(schedule, now)).ToList())
+            foreach (VmSchedule schedule in Schedules.Where(schedule => schedule.IsDue(now)).ToList())
             {
                 await ExecuteScheduleAsync(schedule, "Scheduled run");
             }
@@ -456,23 +456,6 @@ public sealed class MainWindowViewModel : ObservableObject
             SaveSchedules();
             RaiseCommandStatesChanged();
         }
-    }
-
-    private static bool IsDue(VmSchedule schedule, DateTime now)
-    {
-        if (!schedule.Enabled || !schedule.IsScheduledFor(now) || !schedule.TryGetScheduledTime(out TimeOnly scheduledTime))
-        {
-            return false;
-        }
-
-        if (schedule.LastRunLocal?.Date == now.Date)
-        {
-            return false;
-        }
-
-        DateTime scheduledDateTime = now.Date.Add(scheduledTime.ToTimeSpan());
-        TimeSpan catchUpWindow = TimeSpan.FromMinutes(90);
-        return now >= scheduledDateTime && now <= scheduledDateTime.Add(catchUpWindow);
     }
 
     private async Task RunBusyAsync(Func<Task> action)

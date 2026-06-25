@@ -187,6 +187,33 @@ public sealed class VmSchedule : ObservableObject
 
     public string Summary => $"{ActionDisplay} {VmName} at {ScheduledTime} ({DaysDisplay})";
 
+    /// <summary>
+    /// Window after the scheduled time during which a missed run is still
+    /// executed (for example, if the app was closed at the exact minute).
+    /// </summary>
+    public static readonly TimeSpan CatchUpWindow = TimeSpan.FromMinutes(90);
+
+    /// <summary>
+    /// Determines whether this schedule should run at the given local time,
+    /// accounting for the enabled flag, the selected day, the catch-up window,
+    /// and whether it already ran earlier today.
+    /// </summary>
+    public bool IsDue(DateTime now)
+    {
+        if (!Enabled || !IsScheduledFor(now) || !TryGetScheduledTime(out TimeOnly scheduledTime))
+        {
+            return false;
+        }
+
+        if (LastRunLocal?.Date == now.Date)
+        {
+            return false;
+        }
+
+        DateTime scheduledDateTime = now.Date.Add(scheduledTime.ToTimeSpan());
+        return now >= scheduledDateTime && now <= scheduledDateTime.Add(CatchUpWindow);
+    }
+
     public bool IsScheduledFor(DateTime localDateTime)
     {
         return localDateTime.DayOfWeek switch
