@@ -10,6 +10,11 @@ namespace VMAzureApp.Services;
 
 public sealed class AzureVmService : IAzureVmService
 {
+    // How many per-VM instance-view (power state) requests to run at once.
+    // Bounded so large subscriptions don't flood ARM, but high enough to be
+    // far faster than the previous one-at-a-time approach.
+    private const int MaxConcurrentInstanceViewQueries = 8;
+
     private readonly TokenCredential _credential;
     private ArmClient? _client;
 
@@ -48,39 +53,57 @@ public sealed class AzureVmService : IAzureVmService
         AzureSubscriptionInfo subscription,
         CancellationToken cancellationToken = default)
     {
-        List<VirtualMachineInfo> virtualMachines = [];
         SubscriptionResource subscriptionResource = Client.GetSubscriptionResource(
             SubscriptionResource.CreateResourceIdentifier(subscription.Id));
 
-        await foreach (ResourceGroupResource resourceGroup in subscriptionResource.GetResourceGroups().GetAllAsync(cancellationToken: cancellationToken))
+        // Enumerate every VM in the subscription in a single paged call instead
+        // of walking each resource group separately.
+        List<VirtualMachineResource> resources = [];
+        await foreach (VirtualMachineResource virtualMachine in
+            subscriptionResource.GetVirtualMachinesAsync(cancellationToken: cancellationToken))
         {
-            await foreach (VirtualMachineResource virtualMachine in resourceGroup.GetVirtualMachines().GetAllAsync(cancellationToken: cancellationToken))
-            {
-                (string powerStateCode, string powerStateDisplay) = await GetPowerStateAsync(virtualMachine, cancellationToken);
-
-                virtualMachines.Add(new VirtualMachineInfo(
-                    virtualMachine.Id.ToString(),
-                    subscription.Id,
-                    subscription.Name,
-                    virtualMachine.Id.ResourceGroupName ?? resourceGroup.Data.Name,
-                    virtualMachine.Data.Name,
-                    virtualMachine.Data.Location.Name,
-                    virtualMachine.Data.HardwareProfile?.VmSize?.ToString() ?? "N/A",
-                    virtualMachine.Data.StorageProfile?.OSDisk?.OSType?.ToString() ?? "N/A",
-                    virtualMachine.Data.OSProfile?.ComputerName ?? "N/A",
-                    virtualMachine.Data.Priority?.ToString() ?? "Regular",
-                    GetDiskSummary(virtualMachine),
-                    GetZonesSummary(virtualMachine),
-                    GetTagsSummary(virtualMachine),
-                    powerStateCode,
-                    powerStateDisplay));
-            }
+            resources.Add(virtualMachine);
         }
+
+        // Fetch power state for each VM concurrently rather than one-at-a-time.
+        IReadOnlyList<VirtualMachineInfo> virtualMachines = await ConcurrentTasks.MapAsync(
+            resources,
+            MaxConcurrentInstanceViewQueries,
+            async (virtualMachine, token) =>
+            {
+                (string powerStateCode, string powerStateDisplay) = await GetPowerStateAsync(virtualMachine, token);
+                return MapToInfo(virtualMachine, subscription, powerStateCode, powerStateDisplay);
+            },
+            cancellationToken);
 
         return virtualMachines
             .OrderBy(vm => vm.ResourceGroupName, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(vm => vm.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
+
+    private static VirtualMachineInfo MapToInfo(
+        VirtualMachineResource virtualMachine,
+        AzureSubscriptionInfo subscription,
+        string powerStateCode,
+        string powerStateDisplay)
+    {
+        return new VirtualMachineInfo(
+            virtualMachine.Id.ToString(),
+            subscription.Id,
+            subscription.Name,
+            virtualMachine.Id.ResourceGroupName ?? "N/A",
+            virtualMachine.Data.Name,
+            virtualMachine.Data.Location.Name,
+            virtualMachine.Data.HardwareProfile?.VmSize?.ToString() ?? "N/A",
+            virtualMachine.Data.StorageProfile?.OSDisk?.OSType?.ToString() ?? "N/A",
+            virtualMachine.Data.OSProfile?.ComputerName ?? "N/A",
+            virtualMachine.Data.Priority?.ToString() ?? "Regular",
+            GetDiskSummary(virtualMachine),
+            GetZonesSummary(virtualMachine),
+            GetTagsSummary(virtualMachine),
+            powerStateCode,
+            powerStateDisplay);
     }
 
     public async Task StartVirtualMachineAsync(VirtualMachineInfo virtualMachine, CancellationToken cancellationToken = default)
@@ -138,15 +161,28 @@ public sealed class AzureVmService : IAzureVmService
         VirtualMachineResource virtualMachine,
         CancellationToken cancellationToken)
     {
-        Response<Azure.ResourceManager.Compute.Models.VirtualMachineInstanceView> instanceView =
-            await virtualMachine.InstanceViewAsync(cancellationToken);
+        try
+        {
+            Response<Azure.ResourceManager.Compute.Models.VirtualMachineInstanceView> instanceView =
+                await virtualMachine.InstanceViewAsync(cancellationToken);
 
-        Azure.ResourceManager.Compute.Models.InstanceViewStatus? powerState = instanceView.Value.Statuses
-            .FirstOrDefault(status => status.Code is not null
-                && status.Code.StartsWith("PowerState/", StringComparison.OrdinalIgnoreCase));
+            Azure.ResourceManager.Compute.Models.InstanceViewStatus? powerState = instanceView.Value.Statuses
+                .FirstOrDefault(status => status.Code is not null
+                    && status.Code.StartsWith("PowerState/", StringComparison.OrdinalIgnoreCase));
 
-        return powerState is null
-            ? ("PowerState/unknown", "Unknown state")
-            : (powerState.Code ?? "PowerState/unknown", powerState.DisplayStatus ?? powerState.Code ?? "Unknown state");
+            return powerState is null
+                ? ("PowerState/unknown", "Unknown state")
+                : (powerState.Code ?? "PowerState/unknown", powerState.DisplayStatus ?? powerState.Code ?? "Unknown state");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (RequestFailedException)
+        {
+            // A single VM failing to report its status should not break the
+            // whole listing; show it as unknown instead.
+            return ("PowerState/unknown", "Unknown state");
+        }
     }
 }
