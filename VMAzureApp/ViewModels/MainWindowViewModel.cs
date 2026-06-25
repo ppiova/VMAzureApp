@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Threading;
 using VMAzureApp.Models;
 using VMAzureApp.Services;
@@ -10,10 +11,20 @@ namespace VMAzureApp.ViewModels;
 
 public sealed class MainWindowViewModel : ObservableObject
 {
+    // Upper bound on concurrent VM operations during bulk actions and status
+    // refreshes, so large selections don't flood ARM.
+    private const int MaxConcurrentBulkOperations = 6;
+
     private readonly IAzureVmService _azureVmService;
     private readonly SemaphoreSlim _scheduleSemaphore = new(1, 1);
     private readonly VmScheduleStore _scheduleStore = new();
     private readonly DispatcherTimer _scheduleTimer;
+    private readonly DispatcherTimer _statusRefreshTimer;
+    private IReadOnlyList<VirtualMachineInfo> _selectedVirtualMachines = [];
+    private string _searchText = string.Empty;
+    private bool _autoRefreshStatuses;
+    private bool _autoRefreshInProgress;
+    private bool _suppressSubscriptionAutoLoad;
     private string _errorMessage = string.Empty;
     private bool _isBusy;
     private ScheduleActionOption _newScheduleAction;
@@ -35,11 +46,27 @@ public sealed class MainWindowViewModel : ObservableObject
         _newScheduleAction = ScheduleActions[1];
         LoadSubscriptionsCommand = new AsyncRelayCommand(LoadSubscriptionsAsync, () => !IsBusy);
         RefreshCommand = new AsyncRelayCommand(RefreshVirtualMachinesAsync, () => !IsBusy && SelectedSubscription is not null);
+        RefreshStatusesCommand = new AsyncRelayCommand(RefreshAllStatusesAsync, () => !IsBusy && VirtualMachines.Count > 0);
         StartVmCommand = new AsyncRelayCommand(StartVirtualMachineAsync, parameter => CanStartVirtualMachine(parameter));
         StopVmCommand = new AsyncRelayCommand(StopVirtualMachineAsync, parameter => CanStopVirtualMachine(parameter));
+        RestartVmCommand = new AsyncRelayCommand(RestartVirtualMachineAsync, parameter => CanRestartVirtualMachine(parameter));
+        HibernateVmCommand = new AsyncRelayCommand(HibernateVirtualMachineAsync, parameter => CanHibernateVirtualMachine(parameter));
+        StartSelectedCommand = new AsyncRelayCommand(StartSelectedAsync, () => !IsBusy && SelectedStartableCount > 0);
+        StopSelectedCommand = new AsyncRelayCommand(StopSelectedAsync, () => !IsBusy && SelectedStoppableCount > 0);
         AddScheduleCommand = new AsyncRelayCommand(AddScheduleAsync, () => SelectedVirtualMachine is not null);
         DeleteScheduleCommand = new AsyncRelayCommand(DeleteScheduleAsync, parameter => parameter is VmSchedule);
         RunScheduleNowCommand = new AsyncRelayCommand(RunScheduleNowAsync, parameter => parameter is VmSchedule schedule && schedule.Enabled);
+
+        VirtualMachinesView = CollectionViewSource.GetDefaultView(VirtualMachines);
+        VirtualMachinesView.Filter = item => VmSearchFilter.Matches(item as VirtualMachineInfo, SearchText);
+
+        // Re-evaluate the filter when a VM's power state changes, so a search by
+        // status (e.g. "running") stays correct as VMs start/stop.
+        if (VirtualMachinesView is ICollectionViewLiveShaping liveShaping && liveShaping.CanChangeLiveFiltering)
+        {
+            liveShaping.LiveFilteringProperties.Add(nameof(VirtualMachineInfo.PowerStateDisplay));
+            liveShaping.IsLiveFiltering = true;
+        }
 
         Schedules.CollectionChanged += OnSchedulesChanged;
         foreach (VmSchedule schedule in _scheduleStore.Load())
@@ -54,6 +81,12 @@ public sealed class MainWindowViewModel : ObservableObject
         };
         _scheduleTimer.Tick += async (_, _) => await RunDueSchedulesAsync();
         _scheduleTimer.Start();
+
+        _statusRefreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(45)
+        };
+        _statusRefreshTimer.Tick += async (_, _) => await AutoRefreshStatusesAsync();
     }
 
     public ObservableCollection<AzureSubscriptionInfo> Subscriptions { get; } = [];
@@ -68,13 +101,25 @@ public sealed class MainWindowViewModel : ObservableObject
         new(VmScheduleAction.StopDeallocate, "Stop / Deallocate")
     ];
 
+    public ICollectionView VirtualMachinesView { get; }
+
     public AsyncRelayCommand LoadSubscriptionsCommand { get; }
 
     public AsyncRelayCommand RefreshCommand { get; }
 
+    public AsyncRelayCommand RefreshStatusesCommand { get; }
+
     public AsyncRelayCommand StartVmCommand { get; }
 
     public AsyncRelayCommand StopVmCommand { get; }
+
+    public AsyncRelayCommand RestartVmCommand { get; }
+
+    public AsyncRelayCommand HibernateVmCommand { get; }
+
+    public AsyncRelayCommand StartSelectedCommand { get; }
+
+    public AsyncRelayCommand StopSelectedCommand { get; }
 
     public AsyncRelayCommand AddScheduleCommand { get; }
 
@@ -90,6 +135,14 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _selectedSubscription, value))
             {
                 RefreshCommand.RaiseCanExecuteChanged();
+
+                // Automatically reload VMs when the user picks another
+                // subscription. Suppressed during the initial sign-in load,
+                // which selects the first subscription and loads it itself.
+                if (!_suppressSubscriptionAutoLoad && value is not null)
+                {
+                    _ = RefreshVirtualMachinesAsync();
+                }
             }
         }
     }
@@ -108,6 +161,63 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public bool HasSelectedVirtualMachine => SelectedVirtualMachine is not null;
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (SetProperty(ref _searchText, value))
+            {
+                VirtualMachinesView.Refresh();
+                OnPropertyChanged(nameof(ShowEmptyState));
+                OnPropertyChanged(nameof(EmptyStateMessage));
+            }
+        }
+    }
+
+    public bool AutoRefreshStatuses
+    {
+        get => _autoRefreshStatuses;
+        set
+        {
+            if (SetProperty(ref _autoRefreshStatuses, value))
+            {
+                if (value)
+                {
+                    _statusRefreshTimer.Start();
+                }
+                else
+                {
+                    _statusRefreshTimer.Stop();
+                }
+            }
+        }
+    }
+
+    public int SelectedCount => _selectedVirtualMachines.Count;
+
+    public int SelectedStartableCount => _selectedVirtualMachines.Count(vm => vm.CanStart);
+
+    public int SelectedStoppableCount => _selectedVirtualMachines.Count(vm => vm.CanStop);
+
+    public bool HasSelection => SelectedCount > 1;
+
+    /// <summary>
+    /// Called from the view when the grid selection changes so the view model
+    /// can drive the bulk-action commands. The DataGrid's SelectedItems is not
+    /// directly bindable, so the selection is pushed in here instead.
+    /// </summary>
+    public void SetSelectedVirtualMachines(IEnumerable<VirtualMachineInfo> virtualMachines)
+    {
+        _selectedVirtualMachines = virtualMachines.ToList();
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(SelectedStartableCount));
+        OnPropertyChanged(nameof(SelectedStoppableCount));
+        OnPropertyChanged(nameof(HasSelection));
+        StartSelectedCommand.RaiseCanExecuteChanged();
+        StopSelectedCommand.RaiseCanExecuteChanged();
+    }
 
     public ScheduleActionOption NewScheduleAction
     {
@@ -170,10 +280,21 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _isBusy, value))
             {
+                OnPropertyChanged(nameof(IsIdle));
+                OnPropertyChanged(nameof(ShowEmptyState));
                 RaiseCommandStatesChanged();
             }
         }
     }
+
+    public bool IsIdle => !IsBusy;
+
+    /// <summary>True when a subscription is loaded but the grid has no rows to show.</summary>
+    public bool ShowEmptyState => !IsBusy && SelectedSubscription is not null && !VirtualMachinesView.Cast<object>().Any();
+
+    public string EmptyStateMessage => VirtualMachines.Count == 0
+        ? "This subscription has no virtual machines."
+        : "No virtual machines match your search.";
 
     public string StatusMessage
     {
@@ -208,29 +329,39 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         await RunBusyAsync(async () =>
         {
-            ErrorMessage = string.Empty;
-            StatusMessage = "Signing in to Azure...";
-            Subscriptions.Clear();
-            VirtualMachines.Clear();
-            SelectedVirtualMachine = null;
-            RaiseDashboardCountsChanged();
-
-            IReadOnlyList<AzureSubscriptionInfo> subscriptions = await _azureVmService.GetSubscriptionsAsync();
-
-            foreach (AzureSubscriptionInfo subscription in subscriptions)
+            // Selecting the first subscription below must not kick off its own
+            // auto-load; this method loads it explicitly once instead.
+            _suppressSubscriptionAutoLoad = true;
+            try
             {
-                Subscriptions.Add(subscription);
+                ErrorMessage = string.Empty;
+                StatusMessage = "Signing in to Azure...";
+                Subscriptions.Clear();
+                VirtualMachines.Clear();
+                SelectedVirtualMachine = null;
+                RaiseDashboardCountsChanged();
+
+                IReadOnlyList<AzureSubscriptionInfo> subscriptions = await _azureVmService.GetSubscriptionsAsync();
+
+                foreach (AzureSubscriptionInfo subscription in subscriptions)
+                {
+                    Subscriptions.Add(subscription);
+                }
+
+                SelectedSubscription = Subscriptions.FirstOrDefault();
+
+                if (SelectedSubscription is null)
+                {
+                    StatusMessage = "No accessible subscriptions were found for this user.";
+                    return;
+                }
+
+                await LoadVirtualMachinesCoreAsync();
             }
-
-            SelectedSubscription = Subscriptions.FirstOrDefault();
-
-            if (SelectedSubscription is null)
+            finally
             {
-                StatusMessage = "No accessible subscriptions were found for this user.";
-                return;
+                _suppressSubscriptionAutoLoad = false;
             }
-
-            await LoadVirtualMachinesCoreAsync();
         });
     }
 
@@ -280,9 +411,8 @@ public sealed class MainWindowViewModel : ObservableObject
         await RunVmOperationAsync(virtualMachine, "Starting...", async () =>
         {
             await _azureVmService.StartVirtualMachineAsync(virtualMachine);
-            virtualMachine.UpdatePowerState("PowerState/running", "VM running");
-            RaiseDashboardCountsChanged();
-            StatusMessage = $"{virtualMachine.Name} is running.";
+            await RefreshPowerStateAsync(virtualMachine);
+            StatusMessage = $"{virtualMachine.Name} is {virtualMachine.PowerStateDisplay}.";
         });
     }
 
@@ -307,10 +437,91 @@ public sealed class MainWindowViewModel : ObservableObject
         await RunVmOperationAsync(virtualMachine, "Stopping...", async () =>
         {
             await _azureVmService.DeallocateVirtualMachineAsync(virtualMachine);
-            virtualMachine.UpdatePowerState("PowerState/deallocated", "VM deallocated");
-            RaiseDashboardCountsChanged();
-            StatusMessage = $"{virtualMachine.Name} is stopped and deallocated.";
+            await RefreshPowerStateAsync(virtualMachine);
+            StatusMessage = $"{virtualMachine.Name} is {virtualMachine.PowerStateDisplay}.";
         });
+    }
+
+    private async Task RestartVirtualMachineAsync(object? parameter)
+    {
+        if (parameter is not VirtualMachineInfo virtualMachine)
+        {
+            return;
+        }
+
+        await RunVmOperationAsync(virtualMachine, "Restarting...", async () =>
+        {
+            await _azureVmService.RestartVirtualMachineAsync(virtualMachine);
+            await RefreshPowerStateAsync(virtualMachine);
+            StatusMessage = $"{virtualMachine.Name} restarted.";
+        });
+    }
+
+    private async Task HibernateVirtualMachineAsync(object? parameter)
+    {
+        if (parameter is not VirtualMachineInfo virtualMachine)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = System.Windows.MessageBox.Show(
+            $"Hibernate VM '{virtualMachine.Name}'? Its memory is saved to disk and compute charges stop.",
+            "Confirm hibernate",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunVmOperationAsync(virtualMachine, "Hibernating...", async () =>
+        {
+            await _azureVmService.HibernateVirtualMachineAsync(virtualMachine);
+            await RefreshPowerStateAsync(virtualMachine);
+            StatusMessage = $"{virtualMachine.Name} is hibernated.";
+        });
+    }
+
+    private async Task StartSelectedAsync()
+    {
+        List<VirtualMachineInfo> targets = _selectedVirtualMachines.Where(vm => vm.CanStart).ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        await RunBulkOperationAsync(
+            targets,
+            "Starting...",
+            (vm, token) => _azureVmService.StartVirtualMachineAsync(vm, token),
+            $"Started {targets.Count} VM(s).");
+    }
+
+    private async Task StopSelectedAsync()
+    {
+        List<VirtualMachineInfo> targets = _selectedVirtualMachines.Where(vm => vm.CanStop).ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = System.Windows.MessageBox.Show(
+            $"Stop and deallocate {targets.Count} selected VM(s)?",
+            "Confirm stop",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunBulkOperationAsync(
+            targets,
+            "Stopping...",
+            (vm, token) => _azureVmService.DeallocateVirtualMachineAsync(vm, token),
+            $"Stopped {targets.Count} VM(s).");
     }
 
     private async Task AddScheduleAsync()
@@ -395,7 +606,7 @@ public sealed class MainWindowViewModel : ObservableObject
         try
         {
             DateTime now = DateTime.Now;
-            foreach (VmSchedule schedule in Schedules.Where(schedule => IsDue(schedule, now)).ToList())
+            foreach (VmSchedule schedule in Schedules.Where(schedule => schedule.IsDue(now)).ToList())
             {
                 await ExecuteScheduleAsync(schedule, "Scheduled run");
             }
@@ -408,7 +619,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task ExecuteScheduleAsync(VmSchedule schedule, string source)
     {
-        schedule.LastRunLocal = DateTime.Now;
+        // Record the attempt (drives the retry backoff). LastRunLocal, the
+        // once-per-day success marker, is only set if the operation succeeds.
+        schedule.LastAttemptLocal = DateTime.Now;
         schedule.LastResult = $"{source}: running";
         SaveSchedules();
 
@@ -426,14 +639,19 @@ public sealed class MainWindowViewModel : ObservableObject
             if (schedule.Action == VmScheduleAction.Start)
             {
                 await _azureVmService.StartVirtualMachineAsync(schedule.ResourceId);
-                loadedVm?.UpdatePowerState("PowerState/running", "VM running");
             }
             else
             {
                 await _azureVmService.DeallocateVirtualMachineAsync(schedule.ResourceId);
-                loadedVm?.UpdatePowerState("PowerState/deallocated", "VM deallocated");
             }
 
+            if (loadedVm is not null)
+            {
+                VmPowerState state = await _azureVmService.GetPowerStateAsync(schedule.ResourceId);
+                loadedVm.UpdatePowerState(state.Code, state.Display);
+            }
+
+            schedule.LastRunLocal = DateTime.Now;
             schedule.LastResult = $"{source}: success";
             StatusMessage = $"{source} completed: {schedule.Summary}.";
             ErrorMessage = string.Empty;
@@ -456,23 +674,6 @@ public sealed class MainWindowViewModel : ObservableObject
             SaveSchedules();
             RaiseCommandStatesChanged();
         }
-    }
-
-    private static bool IsDue(VmSchedule schedule, DateTime now)
-    {
-        if (!schedule.Enabled || !schedule.IsScheduledFor(now) || !schedule.TryGetScheduledTime(out TimeOnly scheduledTime))
-        {
-            return false;
-        }
-
-        if (schedule.LastRunLocal?.Date == now.Date)
-        {
-            return false;
-        }
-
-        DateTime scheduledDateTime = now.Date.Add(scheduledTime.ToTimeSpan());
-        TimeSpan catchUpWindow = TimeSpan.FromMinutes(90);
-        return now >= scheduledDateTime && now <= scheduledDateTime.Add(catchUpWindow);
     }
 
     private async Task RunBusyAsync(Func<Task> action)
@@ -518,6 +719,114 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    private async Task RunBulkOperationAsync(
+        IReadOnlyList<VirtualMachineInfo> targets,
+        string operationStatus,
+        Func<VirtualMachineInfo, CancellationToken, Task> operation,
+        string successMessage)
+    {
+        ErrorMessage = string.Empty;
+        StatusMessage = $"{operationStatus.TrimEnd('.')} {targets.Count} VM(s)...";
+
+        foreach (VirtualMachineInfo virtualMachine in targets)
+        {
+            virtualMachine.OperationStatus = operationStatus;
+            virtualMachine.IsOperationInProgress = true;
+        }
+
+        RaiseCommandStatesChanged();
+        int failures = 0;
+
+        try
+        {
+            await ConcurrentTasks.RunAsync(targets, MaxConcurrentBulkOperations, async (virtualMachine, token) =>
+            {
+                try
+                {
+                    await operation(virtualMachine, token);
+                    VmPowerState state = await _azureVmService.GetPowerStateAsync(virtualMachine.ResourceId, token);
+                    virtualMachine.UpdatePowerState(state.Code, state.Display);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Interlocked.Increment(ref failures);
+                    ErrorMessage = ex.Message;
+                }
+                finally
+                {
+                    virtualMachine.IsOperationInProgress = false;
+                    virtualMachine.OperationStatus = string.Empty;
+                }
+            });
+        }
+        finally
+        {
+            RaiseDashboardCountsChanged();
+            RaiseCommandStatesChanged();
+        }
+
+        StatusMessage = failures == 0
+            ? successMessage
+            : $"{successMessage} {failures} failed.";
+    }
+
+    private async Task RefreshPowerStateAsync(VirtualMachineInfo virtualMachine)
+    {
+        VmPowerState state = await _azureVmService.GetPowerStateAsync(virtualMachine.ResourceId);
+        virtualMachine.UpdatePowerState(state.Code, state.Display);
+        RaiseDashboardCountsChanged();
+    }
+
+    private async Task RefreshAllStatusesAsync()
+    {
+        await RunBusyAsync(async () =>
+        {
+            ErrorMessage = string.Empty;
+            StatusMessage = "Refreshing power states...";
+            await RefreshStatusesCoreAsync();
+            StatusMessage = $"Power states refreshed for {VirtualMachines.Count} VMs.";
+        });
+    }
+
+    private async Task AutoRefreshStatusesAsync()
+    {
+        // Skip if a load is running, there is nothing to refresh, or a previous
+        // auto-refresh pass is still in flight (timer ticks can overlap on a
+        // large subscription).
+        if (IsBusy || _autoRefreshInProgress || VirtualMachines.Count == 0)
+        {
+            return;
+        }
+
+        _autoRefreshInProgress = true;
+        try
+        {
+            await RefreshStatusesCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            _autoRefreshInProgress = false;
+        }
+    }
+
+    private async Task RefreshStatusesCoreAsync()
+    {
+        // Don't refresh VMs that are mid-operation: a stale status read could
+        // otherwise overwrite the result the operation is about to set.
+        List<VirtualMachineInfo> snapshot = VirtualMachines.Where(vm => !vm.IsOperationInProgress).ToList();
+        await ConcurrentTasks.RunAsync(snapshot, MaxConcurrentBulkOperations, async (virtualMachine, token) =>
+        {
+            VmPowerState state = await _azureVmService.GetPowerStateAsync(virtualMachine.ResourceId, token);
+            virtualMachine.UpdatePowerState(state.Code, state.Display);
+        });
+
+        RaiseDashboardCountsChanged();
+    }
+
     private bool CanStartVirtualMachine(object? parameter)
     {
         return !IsBusy && parameter is VirtualMachineInfo virtualMachine && virtualMachine.CanStart;
@@ -528,12 +837,27 @@ public sealed class MainWindowViewModel : ObservableObject
         return !IsBusy && parameter is VirtualMachineInfo virtualMachine && virtualMachine.CanStop;
     }
 
+    private bool CanRestartVirtualMachine(object? parameter)
+    {
+        return !IsBusy && parameter is VirtualMachineInfo virtualMachine && virtualMachine.CanRestart;
+    }
+
+    private bool CanHibernateVirtualMachine(object? parameter)
+    {
+        return !IsBusy && parameter is VirtualMachineInfo virtualMachine && virtualMachine.CanHibernate;
+    }
+
     private void RaiseCommandStatesChanged()
     {
         LoadSubscriptionsCommand.RaiseCanExecuteChanged();
         RefreshCommand.RaiseCanExecuteChanged();
+        RefreshStatusesCommand.RaiseCanExecuteChanged();
         StartVmCommand.RaiseCanExecuteChanged();
         StopVmCommand.RaiseCanExecuteChanged();
+        RestartVmCommand.RaiseCanExecuteChanged();
+        HibernateVmCommand.RaiseCanExecuteChanged();
+        StartSelectedCommand.RaiseCanExecuteChanged();
+        StopSelectedCommand.RaiseCanExecuteChanged();
         AddScheduleCommand.RaiseCanExecuteChanged();
         DeleteScheduleCommand.RaiseCanExecuteChanged();
         RunScheduleNowCommand.RaiseCanExecuteChanged();
@@ -544,6 +868,8 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TotalVmCount));
         OnPropertyChanged(nameof(RunningVmCount));
         OnPropertyChanged(nameof(StoppedVmCount));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(EmptyStateMessage));
     }
 
     private void OnSchedulesChanged(object? sender, NotifyCollectionChangedEventArgs e)

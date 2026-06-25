@@ -147,6 +147,7 @@
                 <ComboBox Grid.Column="1"
                           ItemsSource="{Binding Subscriptions}"
                           SelectedItem="{Binding SelectedSubscription}"
+                          IsEnabled="{Binding IsIdle}"
                           DisplayMemberPath="Name"
                           MinWidth="320"
                           Padding="10,6"
@@ -187,8 +188,70 @@
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" Margin="0,0,14,0">
-                <DataGrid ItemsSource="{Binding VirtualMachines}"
+              <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="16,14,16,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="10,6"
+                                 VerticalContentAlignment="Center"
+                                 BorderBrush="#CBD5E1" />
+                        <TextBlock Text="Search by name, group, region, size or status..."
+                                   Foreground="#94A3B8"
+                                   IsHitTestVisible="False"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SearchText}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding SelectedCount, StringFormat='{}{0} selected'}"
+                                   VerticalAlignment="Center"
+                                   Foreground="#64748B"
+                                   Margin="0,0,10,0"
+                                   Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Content="Start selected"
+                                Margin="0,0,8,0"
+                                Padding="10,6"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding StartSelectedCommand}" />
+                        <Button Content="Stop selected"
+                                Margin="0,0,8,0"
+                                Padding="10,6"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding StopSelectedCommand}" />
+                        <Button Content="Refresh status"
+                                Margin="0,0,12,0"
+                                Padding="10,6"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding RefreshStatusesCommand}" />
+                        <CheckBox Content="Auto"
+                                  VerticalAlignment="Center"
+                                  ToolTip="Automatically refresh power states every 45 seconds"
+                                  IsChecked="{Binding AutoRefreshStatuses}" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid>
+                <DataGrid x:Name="VmDataGrid"
+                          ItemsSource="{Binding VirtualMachinesView}"
                           SelectedItem="{Binding SelectedVirtualMachine}"
+                          SelectionMode="Extended"
+                          SelectionChanged="OnVmSelectionChanged"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
                           CanUserDeleteRows="False"
@@ -223,22 +286,37 @@
                         <DataGridTextColumn Header="Region" Binding="{Binding Location}" Width="*" />
                         <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="*" />
                         <DataGridTextColumn Header="Status" Binding="{Binding DisplayStatus}" Width="1.5*" />
-                        <DataGridTemplateColumn Header="Actions" Width="210">
+                        <DataGridTemplateColumn Header="Actions" Width="330">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
                                         <Button Content="Start"
-                                                Margin="0,0,8,0"
+                                                Margin="0,0,6,0"
                                                 Padding="10,5"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 IsEnabled="{Binding CanStart}"
                                                 Command="{Binding DataContext.StartVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                 CommandParameter="{Binding}" />
                                         <Button Content="Stop"
+                                                Margin="0,0,6,0"
                                                 Padding="10,5"
                                                 Style="{StaticResource DangerButtonStyle}"
                                                 IsEnabled="{Binding CanStop}"
                                                 Command="{Binding DataContext.StopVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Restart"
+                                                Margin="0,0,6,0"
+                                                Padding="10,5"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                IsEnabled="{Binding CanRestart}"
+                                                Command="{Binding DataContext.RestartVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Hibernate"
+                                                Padding="10,5"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                IsEnabled="{Binding CanHibernate}"
+                                                Visibility="{Binding SupportsHibernation, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Command="{Binding DataContext.HibernateVmCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                 CommandParameter="{Binding}" />
                                     </StackPanel>
                                 </DataTemplate>
@@ -246,6 +324,23 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="0,40,0,0"
+                            Visibility="{Binding ShowEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="No virtual machines"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="#334155"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding EmptyStateMessage}"
+                               Foreground="#94A3B8"
+                               Margin="0,6,0,0"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+                </Grid>
+              </DockPanel>
             </Border>
 
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
@@ -386,6 +481,30 @@
                 Margin="0,12,0,0"
                 Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
             <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#991B1B" />
+        </Border>
+
+        <Border Grid.Row="0" Grid.RowSpan="5"
+                Background="#B3F4F7FB"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Border Background="White"
+                    CornerRadius="14"
+                    Padding="28,22"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel MinWidth="240">
+                    <ProgressBar IsIndeterminate="True"
+                                 Height="6"
+                                 Foreground="#2563EB"
+                                 Background="#E2E8F0"
+                                 BorderThickness="0" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Margin="0,12,0,0"
+                               HorizontalAlignment="Center"
+                               Foreground="#334155" />
+                </StackPanel>
+            </Border>
         </Border>
 
     </Grid>

@@ -86,6 +86,19 @@ public sealed class SystemTrayService : IDisposable
                     "Stop / Deallocate",
                     (_, _) => Dispatch(() => _viewModel.StopVmCommand.Execute(virtualMachine)),
                     _viewModel.StopVmCommand.CanExecute(virtualMachine)));
+                vmItem.DropDownItems.Add(CreateMenuItem(
+                    "Restart",
+                    (_, _) => Dispatch(() => _viewModel.RestartVmCommand.Execute(virtualMachine)),
+                    _viewModel.RestartVmCommand.CanExecute(virtualMachine)));
+
+                if (virtualMachine.SupportsHibernation)
+                {
+                    vmItem.DropDownItems.Add(CreateMenuItem(
+                        "Hibernate",
+                        (_, _) => Dispatch(() => _viewModel.HibernateVmCommand.Execute(virtualMachine)),
+                        _viewModel.HibernateVmCommand.CanExecute(virtualMachine)));
+                }
+
                 vmItem.DropDownItems.Add(new Forms.ToolStripSeparator());
                 vmItem.DropDownItems.Add(new Forms.ToolStripMenuItem($"Resource group: {virtualMachine.ResourceGroupName}") { Enabled = false });
                 vmItem.DropDownItems.Add(new Forms.ToolStripMenuItem($"Region: {virtualMachine.Location}") { Enabled = false });

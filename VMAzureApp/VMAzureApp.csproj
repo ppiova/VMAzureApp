@@ -9,6 +9,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ProjectGuid>{A86F0E77-5461-4A70-A3D2-9E49BA9FEF38}</ProjectGuid>
+    <!-- Ensures restore produces win-x64 assets so the packaging project's
+         self-contained publish profile (Properties\PublishProfiles\win-x64.pubxml)
+         can publish self-contained without NETSDK1047. Plain build/test stay
+         RID-agnostic. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +21,11 @@
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.ResourceManager.Compute" Version="1.14.0" />
     <PackageReference Include="Azure.ResourceManager.Resources" Version="1.11.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VMAzureApp.Tests" />
   </ItemGroup>
 
 </Project>

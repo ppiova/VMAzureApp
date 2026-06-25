@@ -156,6 +156,13 @@ public sealed class VmSchedule : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Timestamp of the last execution attempt (success or failure). Used to
+    /// throttle retries within the catch-up window so a failing run is retried
+    /// after <see cref="RetryBackoff"/> rather than every timer tick.
+    /// </summary>
+    public DateTime? LastAttemptLocal { get; set; }
+
     public string LastResult
     {
         get => _lastResult;
@@ -186,6 +193,45 @@ public sealed class VmSchedule : ObservableObject
         : LastRunLocal.Value.ToString("g", CultureInfo.CurrentCulture);
 
     public string Summary => $"{ActionDisplay} {VmName} at {ScheduledTime} ({DaysDisplay})";
+
+    /// <summary>
+    /// Window after the scheduled time during which a missed run is still
+    /// executed (for example, if the app was closed at the exact minute).
+    /// </summary>
+    public static readonly TimeSpan CatchUpWindow = TimeSpan.FromMinutes(90);
+
+    /// <summary>Minimum delay between execution attempts after a failed run.</summary>
+    public static readonly TimeSpan RetryBackoff = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Determines whether this schedule should run at the given local time,
+    /// accounting for the enabled flag, the selected day, the catch-up window,
+    /// whether it already ran successfully today, and a retry backoff so a
+    /// failed run is retried after <see cref="RetryBackoff"/> rather than on
+    /// every tick.
+    /// </summary>
+    public bool IsDue(DateTime now)
+    {
+        if (!Enabled || !IsScheduledFor(now) || !TryGetScheduledTime(out TimeOnly scheduledTime))
+        {
+            return false;
+        }
+
+        // Already completed successfully today.
+        if (LastRunLocal?.Date == now.Date)
+        {
+            return false;
+        }
+
+        // A recent attempt failed; wait for the backoff before retrying.
+        if (LastAttemptLocal is DateTime lastAttempt && now - lastAttempt < RetryBackoff)
+        {
+            return false;
+        }
+
+        DateTime scheduledDateTime = now.Date.Add(scheduledTime.ToTimeSpan());
+        return now >= scheduledDateTime && now <= scheduledDateTime.Add(CatchUpWindow);
+    }
 
     public bool IsScheduledFor(DateTime localDateTime)
     {

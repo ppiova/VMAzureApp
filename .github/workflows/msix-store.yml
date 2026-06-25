@@ -1,0 +1,112 @@
+name: Build MSIX (Store)
+
+# Produces an UNSIGNED .msixupload for Microsoft Store submission via Partner
+# Center. The Store re-signs the package after upload, so no code-signing
+# certificate is used here. The separate msix-release.yml workflow keeps
+# building the self-signed package for GitHub-release sideloading.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, e.g. 1.0.9.0 (the 4th segment is forced to 0)."
+        required: true
+        default: "1.0.9.0"
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_PROJECT: VMAzureApp.Package\VMAzureApp.Package.wapproj
+  MANIFEST_PATH: VMAzureApp.Package\Package.appxmanifest
+  PACKAGE_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+
+jobs:
+  build-store-msix:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set package version and publisher in manifest
+        shell: pwsh
+        run: |
+          $parts = "${{ github.event.inputs.version }}".Split(".")
+          while ($parts.Count -lt 4) { $parts += "0" }
+          $parts[3] = "0"   # Store requires the revision (4th) segment to be 0.
+          $version = ($parts[0..3] -join ".")
+
+          # Must match the Publisher shown in Partner Center > Product identity.
+          $publisher = if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) {
+            "CN=9C5245CA-C92C-4BF3-8E4D-810F66F8811F"
+          } else {
+            $env:PACKAGE_PUBLISHER
+          }
+
+          [xml]$manifest = Get-Content $env:MANIFEST_PATH
+          $manifest.Package.Identity.Version = $version
+          $manifest.Package.Identity.Publisher = $publisher
+
+          $settings = [System.Xml.XmlWriterSettings]::new()
+          $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
+          $settings.Indent = $true
+          $writer = [System.Xml.XmlWriter]::Create($env:MANIFEST_PATH, $settings)
+          try {
+            $manifest.Save($writer)
+          } finally {
+            $writer.Dispose()
+          }
+
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: dotnet restore .\VMAzureApp\VMAzureApp.csproj
+
+      - name: Build Store MSIX (unsigned)
+        shell: pwsh
+        run: |
+          msbuild $env:PACKAGE_PROJECT `
+            /restore `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:AppxBundle=Never `
+            /p:UapAppxPackageBuildMode=CI `
+            /p:AppxPackageSigningEnabled=false `
+            /p:GenerateAppxPackageOnBuild=true
+
+      - name: Collect Store package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+
+          $packages = Get-ChildItem -Path VMAzureApp.Package\AppPackages -Recurse -Include *.msixupload
+          if ($packages.Count -eq 0) {
+            $packages = Get-ChildItem -Path VMAzureApp.Package\AppPackages -Recurse -Include *.msix
+          }
+          if ($packages.Count -eq 0) {
+            Get-ChildItem -Path VMAzureApp.Package\AppPackages -Recurse | Select-Object FullName
+            throw "No .msixupload or .msix package was produced."
+          }
+
+          $packages | Copy-Item -Destination artifacts
+
+          # A Store package must not ship signing material or install scripts.
+          Get-ChildItem -Path artifacts -Recurse -Include *.cer, *.pfx, Install-*.ps1 |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+      - name: Upload Store artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AzureVMManager-Store-${{ env.PACKAGE_VERSION }}
+          path: |
+            artifacts\*.msixupload
+            artifacts\*.msix
