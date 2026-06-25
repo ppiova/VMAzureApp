@@ -23,6 +23,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private IReadOnlyList<VirtualMachineInfo> _selectedVirtualMachines = [];
     private string _searchText = string.Empty;
     private bool _autoRefreshStatuses;
+    private bool _autoRefreshInProgress;
     private bool _suppressSubscriptionAutoLoad;
     private string _errorMessage = string.Empty;
     private bool _isBusy;
@@ -58,6 +59,14 @@ public sealed class MainWindowViewModel : ObservableObject
 
         VirtualMachinesView = CollectionViewSource.GetDefaultView(VirtualMachines);
         VirtualMachinesView.Filter = item => VmSearchFilter.Matches(item as VirtualMachineInfo, SearchText);
+
+        // Re-evaluate the filter when a VM's power state changes, so a search by
+        // status (e.g. "running") stays correct as VMs start/stop.
+        if (VirtualMachinesView is ICollectionViewLiveShaping liveShaping && liveShaping.CanChangeLiveFiltering)
+        {
+            liveShaping.LiveFilteringProperties.Add(nameof(VirtualMachineInfo.PowerStateDisplay));
+            liveShaping.IsLiveFiltering = true;
+        }
 
         Schedules.CollectionChanged += OnSchedulesChanged;
         foreach (VmSchedule schedule in _scheduleStore.Load())
@@ -610,7 +619,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task ExecuteScheduleAsync(VmSchedule schedule, string source)
     {
-        schedule.LastRunLocal = DateTime.Now;
+        // Record the attempt (drives the retry backoff). LastRunLocal, the
+        // once-per-day success marker, is only set if the operation succeeds.
+        schedule.LastAttemptLocal = DateTime.Now;
         schedule.LastResult = $"{source}: running";
         SaveSchedules();
 
@@ -640,6 +651,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 loadedVm.UpdatePowerState(state.Code, state.Display);
             }
 
+            schedule.LastRunLocal = DateTime.Now;
             schedule.LastResult = $"{source}: success";
             StatusMessage = $"{source} completed: {schedule.Summary}.";
             ErrorMessage = string.Empty;
@@ -778,11 +790,15 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private async Task AutoRefreshStatusesAsync()
     {
-        if (IsBusy || VirtualMachines.Count == 0)
+        // Skip if a load is running, there is nothing to refresh, or a previous
+        // auto-refresh pass is still in flight (timer ticks can overlap on a
+        // large subscription).
+        if (IsBusy || _autoRefreshInProgress || VirtualMachines.Count == 0)
         {
             return;
         }
 
+        _autoRefreshInProgress = true;
         try
         {
             await RefreshStatusesCoreAsync();
@@ -791,11 +807,17 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             ErrorMessage = ex.Message;
         }
+        finally
+        {
+            _autoRefreshInProgress = false;
+        }
     }
 
     private async Task RefreshStatusesCoreAsync()
     {
-        List<VirtualMachineInfo> snapshot = VirtualMachines.ToList();
+        // Don't refresh VMs that are mid-operation: a stale status read could
+        // otherwise overwrite the result the operation is about to set.
+        List<VirtualMachineInfo> snapshot = VirtualMachines.Where(vm => !vm.IsOperationInProgress).ToList();
         await ConcurrentTasks.RunAsync(snapshot, MaxConcurrentBulkOperations, async (virtualMachine, token) =>
         {
             VmPowerState state = await _azureVmService.GetPowerStateAsync(virtualMachine.ResourceId, token);

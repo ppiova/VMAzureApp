@@ -119,6 +119,28 @@ public class VmScheduleTests
     }
 
     [Fact]
+    public void IsDue_False_WhenAttemptWithinRetryBackoff()
+    {
+        DateTime now = At(18, 30);
+        VmSchedule schedule = ScheduleFor(now.DayOfWeek, "18:00");
+        // Failed run a moment ago (LastRunLocal not set), within the backoff.
+        schedule.LastAttemptLocal = now.AddMinutes(-1);
+
+        Assert.False(schedule.IsDue(now));
+    }
+
+    [Fact]
+    public void IsDue_True_WhenAttemptOlderThanRetryBackoff()
+    {
+        DateTime now = At(18, 30);
+        VmSchedule schedule = ScheduleFor(now.DayOfWeek, "18:00");
+        // Failed earlier; backoff elapsed and still inside the catch-up window.
+        schedule.LastAttemptLocal = now.Add(-VmSchedule.RetryBackoff).AddMinutes(-1);
+
+        Assert.True(schedule.IsDue(now));
+    }
+
+    [Fact]
     public void IsDue_False_WhenTimeIsInvalid()
     {
         DateTime now = At(18, 5);

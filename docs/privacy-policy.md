@@ -41,7 +41,7 @@ At your request, the app performs standard VM power operations on your behalf: *
 
 The app stores a small amount of data **only on your computer**, under your user profile (`%AppData%\AzureVMManager`):
 
-- the local schedules you create (which VM, action, days, and time).
+- the local schedules you create, including the target VM and its identifying details (name, subscription name, resource group, and the Azure resource ID, which contains your subscription ID), the action, the selected days and time, whether the schedule is enabled, and the time and result of the last run.
 
 These files never leave your machine. You can delete them at any time by removing that folder.
 
