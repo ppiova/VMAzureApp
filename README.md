@@ -1,6 +1,20 @@
 # Cloud VM Manager
 
+[![Build MSIX](https://github.com/ppiova/VMAzureApp/actions/workflows/msix-release.yml/badge.svg)](https://github.com/ppiova/VMAzureApp/actions/workflows/msix-release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Cloud%20VM%20Manager-0078D4)](https://apps.microsoft.com/detail/9NGRMHHVCV4B)
+
 Cloud VM Manager is a Windows desktop app for managing Azure virtual machines across subscriptions without opening the Azure portal.
+
+## Install
+
+Get it from the Microsoft Store:
+
+<a href="https://apps.microsoft.com/detail/9NGRMHHVCV4B?mode=direct">
+  <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="240" alt="Download Cloud VM Manager from the Microsoft Store"/>
+</a>
+
+You can also install the MSIX package from [GitHub Releases](../../releases) — see [MSIX releases](#msix-releases).
 
 ## Preview
 
@@ -18,21 +32,23 @@ Cloud VM Manager is a Windows desktop app for managing Azure virtual machines ac
 - Local schedules to start or stop/deallocate VMs on selected days and times.
 - VM details panel with subscription, resource group, region, size, OS, disks, zones, tags, and status.
 - Modern WPF UI with a system tray icon and quick actions.
-- MSIX packaging workflow for GitHub Releases.
 
 ## Requirements
 
 - Windows 10 or later.
-- .NET 10 SDK for development.
 - Azure permissions to read and operate virtual machines in the target subscriptions.
 
-## Run locally
+## Development
+
+Building from source requires the .NET 10 SDK.
+
+Run locally:
 
 ```powershell
 dotnet run --project .\VMAzureApp\VMAzureApp.csproj
 ```
 
-## Build
+Build:
 
 ```powershell
 dotnet build .\VMAzureApp\VMAzureApp.csproj
